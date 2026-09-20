@@ -1,0 +1,32 @@
+{
+  "purpose": "Real teacher wire-format and native-rules regression fixture; not a training corpus",
+  "sha256": "44b4832f6e58bb7060e36a64fdd41d3d670bc3b152321b0a987be664d237bdcf",
+  "teacher": {
+    "id": "rapfi-d944f47aa30cf6ba9989",
+    "engine": "Rapfi",
+    "release": "250615",
+    "sourceCommit": "1be1551ced57e38d53ed58f6d74bf6f8b4bdc230",
+    "networkCommit": "918b757a129258e9e765f77fe17d507c2bb1a60b",
+    "evaluator": "mix9svq",
+    "files": {
+      "model210901.bin": "2fa08cb15cf240d9533548c3e011b03d46809f6858362e97ee873d0632aa2015",
+      "pbrain-rapfi-windows-avx2.exe": "1e02497433fb765626f954c895b0b92e057ac12a76c76318abe74d4050914e8e",
+      "mix9svqfreestyle_bsmix.bin.lz4": "6bc0d1b0ff8e1d857f7f412923cd458f38f1a435087c91ae71fec3676c23ef62",
+      "mix9svqrenju_bs15_black.bin.lz4": "7ab8c974c30da07717ce6a504616a62ac8c981500503f0ced0fadefd3f46c5ec",
+      "mix9svqrenju_bs15_white.bin.lz4": "a31f318518d3b5630489054d9eb013fd5353c553999640c2bcfd8d95e6fe4e4e",
+      "mix9svqstandard_bs15.bin.lz4": "84334f5db96f45b3e36ebdde06d2259d878ae1eb347b7cf74574ac908b8d9e7d",
+      "config.toml": "32b9180c91247541d399ceef62906d5ffeb48e34eb5f261612987633820d5d3c"
+    },
+    "scoreConvention": "side-to-move; winrate=sigmoid(eval/200); mate=abs(eval)>=29500"
+  },
+  "generation": {
+    "games": 2,
+    "nodes": 20000,
+    "openingMin": 6,
+    "openingMax": 10,
+    "balance1Nodes": 20000,
+    "balance2Nodes": 40000,
+    "rule": "freestyle",
+    "size": 15
+  }
+}

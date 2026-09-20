@@ -1,0 +1,44 @@
+{
+  "version": 5,
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Native development",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dev",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+    },
+    {
+      "name": "wasm",
+      "displayName": "Browser WebAssembly engine",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/browser",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GOMOKU_BUILD_WORKER": "OFF",
+        "GOMOKU_BUILD_GOMOCUP": "OFF",
+        "GOMOKU_BUILD_TESTS": "OFF",
+        "GOMOKU_BUILD_WASM": "ON"
+      }
+    },
+    {
+      "name": "competition",
+      "displayName": "Offline competition build (no third-party dependencies)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/competition",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GOMOKU_BUILD_WORKER": "OFF",
+        "GOMOKU_BUILD_TESTS": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "wasm", "configurePreset": "wasm" },
+    { "name": "competition", "configurePreset": "competition" }
+  ],
+  "testPresets": [
+    { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } }
+  ]
+}

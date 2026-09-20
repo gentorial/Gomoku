@@ -1,0 +1,7 @@
+add_executable(gomoku-engine-tests test_engine.cpp)
+target_link_libraries(gomoku-engine-tests PRIVATE gomoku_engine)
+add_test(NAME engine COMMAND gomoku-engine-tests)
+if(TARGET nlohmann_json::nlohmann_json)
+  add_executable(gomoku-nnue-check nnue_check.cpp)
+  target_link_libraries(gomoku-nnue-check PRIVATE gomoku_engine nlohmann_json::nlohmann_json)
+endif()

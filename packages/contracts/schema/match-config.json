@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "default": "human-ai",
+      "type": "string",
+      "enum": [
+        "human-human",
+        "human-ai",
+        "ai-ai"
+      ]
+    },
+    "size": {
+      "default": 15,
+      "anyOf": [
+        {
+          "type": "number",
+          "const": 15
+        },
+        {
+          "type": "number",
+          "const": 20
+        }
+      ]
+    },
+    "rule": {
+      "default": "freestyle",
+      "type": "string",
+      "enum": [
+        "freestyle",
+        "standard"
+      ]
+    },
+    "humanColor": {
+      "default": "black",
+      "type": "string",
+      "enum": [
+        "black",
+        "white"
+      ]
+    },
+    "blackTimeMs": {
+      "default": 300,
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 3000
+    },
+    "whiteTimeMs": {
+      "default": 300,
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 3000
+    },
+    "evaluator": {
+      "default": "nnue",
+      "type": "string",
+      "enum": [
+        "nnue",
+        "handcrafted"
+      ]
+    }
+  },
+  "required": [
+    "mode",
+    "size",
+    "rule",
+    "humanColor",
+    "blackTimeMs",
+    "whiteTimeMs",
+    "evaluator"
+  ],
+  "additionalProperties": false
+}

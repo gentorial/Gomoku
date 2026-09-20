@@ -1,0 +1,15 @@
+[project]
+name = "gomoku-tools"
+version = "0.1.0"
+description = "Native engine clients, self-play, and Gomocup arena"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+gomoku-selfplay = "gomoku_tools.selfplay:main"
+gomoku-arena = "gomoku_tools.arena:main"
+gomoku-teacher = "gomoku_tools.rapfi:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"

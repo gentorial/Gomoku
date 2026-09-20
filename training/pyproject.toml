@@ -1,0 +1,48 @@
+[project]
+name = "gomoku-training"
+version = "0.1.0"
+description = "Sharded datasets, directional NNUE training and portable model exports"
+requires-python = ">=3.11"
+dependencies = ["gomoku-tools", "numpy>=2.2,<3"]
+
+[project.optional-dependencies]
+cpu = ["torch==2.11.0"]
+xpu = ["torch==2.11.0", "triton-xpu==3.7.0"]
+cuda = ["torch==2.11.0"]
+
+[project.scripts]
+gomoku-data = "gomoku_training.dataset:main"
+gomoku-train = "gomoku_training.train:main"
+gomoku-prepare = "gomoku_training.prepare:main"
+gomoku-export = "gomoku_training.export:main"
+gomoku-device = "gomoku_training.device:main"
+gomoku-evaluate = "gomoku_training.evaluate:main"
+gomoku-assess = "gomoku_training.assess:main"
+
+[tool.uv.sources]
+gomoku-tools = { workspace = true }
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-xpu", extra = "xpu" },
+  { index = "pytorch-cuda", extra = "cuda" },
+]
+triton-xpu = { index = "pytorch-xpu", extra = "xpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"

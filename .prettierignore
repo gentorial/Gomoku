@@ -1,0 +1,16 @@
+pnpm-lock.yaml
+uv.lock
+build/
+.tools/
+packages/engine-wasm/generated/
+dist/
+node_modules/
+.venv/
+data/
+artifacts/
+packages/contracts/schema/
+GUI/
+apps/desktop/
+*.cpp
+*.h
+*.py

@@ -1,0 +1,8 @@
+packages:
+  - apps/web
+  - apps/server
+  - packages/*
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - tsx@4.23.15

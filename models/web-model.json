@@ -1,0 +1,10 @@
+{
+  "id": "rapfi-calibrated-v1",
+  "label": "Rapfi NNUE v1",
+  "architecture": "line11-dual-v1",
+  "size": 15,
+  "rule": "freestyle",
+  "bytes": 102109456,
+  "sha256": "4ddd79cd821a2814c5a2cb762b52d5853ba03bc5e613f3d6c5e5344a6acd3e3a",
+  "url": "https://github.com/gentorial/Gomoku/releases/download/nnue-rapfi-calibrated-v1/weights.gnn"
+}

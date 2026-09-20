@@ -1,0 +1,37 @@
+{
+  "name": "gomoku-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "model:stage": "node scripts/model.mjs",
+    "model:download": "node scripts/model.mjs --download",
+    "model:verify": "node scripts/verify-nnue.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:full": "node scripts/dev.mjs --server",
+    "build": "node scripts/tasks.mjs build",
+    "build:web": "pnpm wasm:build && pnpm build:packages && pnpm --filter @gomoku/web build",
+    "web:verify": "node scripts/verify-web.mjs",
+    "build:packages": "pnpm --filter @gomoku/contracts --filter @gomoku/sdk --filter @gomoku/engine-wasm build",
+    "engine:build": "node scripts/tasks.mjs engine",
+    "engine:competition": "node scripts/tasks.mjs competition",
+    "wasm:setup": "node scripts/wasm.mjs setup",
+    "wasm:build": "node scripts/wasm.mjs build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "node scripts/tasks.mjs test",
+    "test:ts": "pnpm -r --if-present test",
+    "check": "node scripts/tasks.mjs check",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "prettier": "3.9.8",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

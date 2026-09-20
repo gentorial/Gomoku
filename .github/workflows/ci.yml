@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Superseded PR runs can stop; a running production deployment must finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-workspace
+        with:
+          wasm: "true"
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - name: Build, test, typecheck and format
+        run: pnpm check
+      - name: Verify generated contracts are committed
+        shell: bash
+        run: |
+          pnpm --filter @gomoku/contracts schema
+          if [ -n "$(git status --porcelain -- packages/contracts/schema)" ]; then
+            git diff -- packages/contracts/schema
+            git status --short -- packages/contracts/schema
+            exit 1
+          fi
+      - name: Validate static website assets
+        run: pnpm web:verify
+      - name: Save native development binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            build/dev/bin/gomoku-worker*
+            build/dev/bin/gomoku-nnue-check*
+            build/dev/bin/pbrain-gomoku*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Save tested WebAssembly for website deployment
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: engine-wasm
+          path: |
+            packages/engine-wasm/generated/gomoku-engine.mjs
+            packages/engine-wasm/generated/gomoku-engine.wasm
+          if-no-files-found: error
+          retention-days: 14
+
+  competition:
+    name: Gomocup (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      # Independent of Node.js, Python, Emscripten and JSON dependencies.
+      - name: Build standalone competition engine
+        run: |
+          cmake --preset competition
+          cmake --build --preset competition --parallel 4
+      - name: Package and execute the extracted engine
+        run: |
+          cpack --config build/competition/CPackConfig.cmake -B artifacts
+          cmake -P scripts/verify-competition.cmake
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gomocup-${{ runner.os }}-${{ runner.arch }}
+          path: artifacts/gomoku-*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  training:
+    name: Training (${{ matrix.os }})
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Install locked CPU training environment
+        run: |
+          python -m pip install uv==0.11.21
+          uv sync --locked --package gomoku-training --extra cpu
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: native-${{ runner.os }}-${{ runner.arch }}
+          path: build/dev/bin
+      - name: Restore executable permissions
+        if: runner.os == 'Linux'
+        run: chmod +x build/dev/bin/gomoku-worker build/dev/bin/pbrain-gomoku build/dev/bin/gomoku-nnue-check
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: engine-wasm
+          path: packages/engine-wasm/generated
+      - name: Validate datasets, training resume and quantized export
+        run: uv run --frozen --package gomoku-training --extra cpu python -m unittest discover -s training/tests -v
+      - name: Exercise the default production network
+        run: uv run --frozen --package gomoku-training --extra cpu gomoku-device --device cpu --check --steps 2
+
+  pages:
+    name: Website
+    needs: [check, competition, training]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

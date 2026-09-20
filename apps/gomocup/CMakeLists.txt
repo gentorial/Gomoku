@@ -1,0 +1,6 @@
+add_executable(pbrain-gomoku main.cpp)
+target_link_libraries(pbrain-gomoku PRIVATE gomoku_engine)
+if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set_target_properties(pbrain-gomoku PROPERTIES OUTPUT_NAME pbrain-gomoku64)
+endif()
+install(TARGETS pbrain-gomoku RUNTIME DESTINATION .)

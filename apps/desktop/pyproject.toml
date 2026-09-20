@@ -1,0 +1,16 @@
+[project]
+name = "gomoku-desktop"
+version = "0.1.0"
+description = "Tkinter client for the native JSON Lines worker"
+requires-python = ">=3.11"
+dependencies = ["gomoku-tools"]
+
+[project.scripts]
+gomoku-desktop = "gomoku_desktop.app:main"
+
+[tool.uv.sources]
+gomoku-tools = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
