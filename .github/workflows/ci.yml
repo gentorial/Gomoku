@@ -36,6 +36,11 @@ jobs:
           arch: x64
       - name: Build, test, typecheck and format
         run: pnpm check
+      - name: Validate portable scalar kernels and search
+        run: |
+          cmake -S . -B build/scalar -G Ninja -DCMAKE_BUILD_TYPE=Release -DGOMOKU_SIMD=OFF -DGOMOKU_BUILD_WORKER=OFF -DGOMOKU_BUILD_GOMOCUP=OFF
+          cmake --build build/scalar --parallel 4
+          ctest --test-dir build/scalar --output-on-failure
       - name: Verify generated contracts are committed
         shell: bash
         run: |

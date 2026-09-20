@@ -1,4 +1,5 @@
 #include "gomoku/position.h"
+#include "gomoku/profile.h"
 
 #include <algorithm>
 #include <array>
@@ -75,6 +76,7 @@ bool Position::wins(Move move, Color color) const {
     return false;
 }
 void Position::play(Move move) {
+    GOMOKU_SCOPE(play);
     if (!legal(move)) throw std::invalid_argument("Illegal move or game already finished");
     history_.push_back({move, winner_});
     board_[index(move)] = turn_;
@@ -84,6 +86,7 @@ void Position::play(Move move) {
     turn_ = opposite(turn_);
 }
 void Position::undo() {
+    GOMOKU_SCOPE(undo);
     if (history_.empty()) throw std::invalid_argument("No move to undo");
     const auto last = history_.back();
     history_.pop_back();
@@ -117,6 +120,7 @@ Position Position::from_stones(int size, Rule rule, std::span<const Stone> stone
     return position;
 }
 std::vector<Move> Position::candidates() const {
+    GOMOKU_SCOPE(candidates);
     if (terminal()) return {};
     if (ply_ == 0) return {{size_ / 2, size_ / 2}};
     std::vector<Move> moves;

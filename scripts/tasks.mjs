@@ -11,6 +11,7 @@ async function typescript() {
 }
 async function tests() {
   await run("ctest", ["--preset", "dev"]);
+  await run("ctest", ["--test-dir", "build/browser", "--output-on-failure"]);
   await run("pnpm", ["test:ts"]);
   await run(process.env.PYTHON || "python", [
     "-m",

@@ -1,4 +1,6 @@
 #include "gomoku/nnue.h"
+#include "gomoku/profile.h"
+#include "nnue_kernels.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -127,27 +129,44 @@ bool NnueModel::supports(const Position& position) const {
 struct NnueEvaluator::State {
     std::shared_ptr<const NnueModel> model;
     struct Line { int offset; std::vector<int> cells; };
-    struct Affected { std::vector<int> merged, spatial; };
+    struct LineChange { int point, direction, power; };
+    struct Neighbor { int point, kernel; };
+    struct Affected { std::vector<int> merged, spatial; std::vector<LineChange> lines; };
     struct Frame {
         int point;
         std::uint64_t hash;
         std::vector<std::int16_t> merged, spatial;
-        std::vector<std::int64_t> pools;
+        std::vector<std::int32_t> preactivation, pools;
     };
     int size, c, count, depth = 0;
     Color turn = Color::empty;
     std::uint64_t hash = 0;
     std::vector<std::array<Line, 4>> lines;
     std::vector<Affected> affected;
+    std::vector<std::vector<Neighbor>> fanouts;
+    std::vector<std::array<std::array<int, 4>, 2>> pattern_ids;
     std::vector<int> regions;
     std::array<int, 10> areas{};
-    std::vector<std::int16_t> merged, spatial;
-    std::vector<std::int64_t> pools;
+    std::vector<std::int16_t> merged, spatial, deltas, spatial_weights;
+    std::vector<std::int32_t> preactivation, pools;
+    std::vector<bool> changed;
     std::vector<Frame> frames;
+    // Scratch buffers belong to this evaluator/search and are reused at every node.
+    std::vector<std::int16_t> value_input, value_activated, policy_input, paired, policy_activated;
+    std::vector<std::int64_t> value_hidden, policy_global, policy_local;
+    std::array<std::int64_t, 3> value_output{};
+    std::array<std::int64_t, 1> policy_output{};
 
     explicit State(std::shared_ptr<const NnueModel> weights) : model(std::move(weights)),
         size(model->size_), c(model->channels_), count(size*size),
-        lines(count), affected(count), regions(count), merged(2*count*c), spatial(2*count*c), pools(20*c) {
+        lines(count), affected(count), fanouts(count), pattern_ids(count), regions(count),
+        merged(2*count*c), spatial(2*count*c), deltas(2*count*c), spatial_weights(9*c),
+        preactivation(2*count*c), pools(20*c), changed(2*count),
+        value_input(aligned(20*c)), value_activated(model->value_hidden_),
+        policy_input(aligned(2*c)), paired(2*c), policy_activated(model->policy_hidden_),
+        value_hidden(model->value_hidden_), policy_global(model->policy_hidden_), policy_local(model->policy_hidden_) {
+        for (int channel = 0; channel < c; ++channel) for (int k = 0; k < 9; ++k)
+            spatial_weights[k*c+channel] = model->tensors_[2][channel*9+k];
         int offsets[6][6], offset = 0;
         for (int left = 0; left <= 5; ++left)
             for (int right = 0; right <= 5; ++right) {
@@ -182,14 +201,27 @@ struct NnueEvaluator::State {
                 }
             }
             for (int q = 0; q < count; ++q) if (halo[q]) affected[point].spatial.push_back(q);
+            // For an input at (x,y), cache output cells and the corresponding kernel tap.
+            for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+                const int xx = x+dx, yy = y+dy;
+                if (xx >= 0 && xx < size && yy >= 0 && yy < size)
+                    fanouts[point].push_back({yy*size+xx, (1-dy)*3+1-dx});
+            }
+        }
+        for (int point = 0; point < count; ++point) for (int direction = 0; direction < 4; ++direction) {
+            int power = 1;
+            for (int cell : lines[point][direction].cells) {
+                affected[cell].lines.push_back({point, direction, power});
+                power *= 3;
+            }
         }
     }
     void check(const Position& position) const {
         if (turn == Color::empty || position.hash() != hash || !model->supports(position))
             throw std::logic_error("NNUE accumulator does not match position");
     }
-    void update_merged(const Position& position, int point) {
-        std::array<std::array<int, 4>, 2> ids{};
+    void rebuild_patterns(const Position& position, int point) {
+        auto& ids = pattern_ids[point];
         for (int d = 0; d < 4; ++d) {
             const auto& line = lines[point][d];
             ids[0][d] = ids[1][d] = line.offset;
@@ -204,33 +236,41 @@ struct NnueEvaluator::State {
                 power *= 3;
             }
         }
+    }
+    void change_patterns(int point, Color color, int sign) {
+        const int digit = static_cast<int>(color);
+        for (const auto& line : affected[point].lines) {
+            pattern_ids[line.point][0][line.direction] += sign*digit*line.power;
+            pattern_ids[line.point][1][line.direction] += sign*(3-digit)*line.power;
+        }
+    }
+    void update_merged(int point) {
+        const auto& ids = pattern_ids[point];
         for (int side = 0; side < 2; ++side) {
             const auto* hv = model->tensors_[0].data();
             const auto* diag = model->tensors_[1].data();
-            auto* target = merged.data() + (side*count+point)*c;
-            for (int channel = 0; channel < c; ++channel)
-                target[channel] = static_cast<std::int16_t>(std::clamp(
-                    int(hv[ids[side][0]*c+channel]) + hv[ids[side][1]*c+channel] +
-                    diag[ids[side][2]*c+channel] + diag[ids[side][3]*c+channel], 0, 256));
+            const int offset = (side*count+point)*c;
+            changed[side*count+point] = nnue_kernels::merge(merged.data()+offset, deltas.data()+offset,
+                hv+ids[side][0]*c, hv+ids[side][1]*c, diag+ids[side][2]*c, diag+ids[side][3]*c, c);
+        }
+    }
+    void propagate(int point, bool incremental) {
+        for (int side = 0; side < 2; ++side) {
+            if (incremental && !changed[side*count+point]) continue;
+            const auto* values = (incremental ? deltas.data() : merged.data()) + (side*count+point)*c;
+            for (const auto& neighbor : fanouts[point])
+                nnue_kernels::accumulate(preactivation.data()+(side*count+neighbor.point)*c,
+                    values, spatial_weights.data()+neighbor.kernel*c, c);
         }
     }
     void update_spatial(int point) {
-        for (int side = 0; side < 2; ++side) for (int channel = 0; channel < c; ++channel) {
-            auto value = std::int64_t(model->tensors_[3][channel])*256;
-            for (int ky = 0; ky < 3; ++ky) for (int kx = 0; kx < 3; ++kx) {
-                const int xx = point%size+kx-1, yy = point/size+ky-1;
-                if (xx >= 0 && xx < size && yy >= 0 && yy < size)
-                    value += std::int64_t(model->tensors_[2][channel*9+ky*3+kx]) *
-                        merged[(side*count+yy*size+xx)*c+channel];
-            }
-            auto& old = spatial[(side*count+point)*c+channel];
-            const auto next = activate(value);
-            pools[(side*10)*c+channel] += next-old;
-            pools[(side*10+regions[point])*c+channel] += next-old;
-            old = next;
-        }
+        for (int side = 0; side < 2; ++side)
+            nnue_kernels::activate_pool(preactivation.data()+(side*count+point)*c,
+                spatial.data()+(side*count+point)*c, pools.data()+side*10*c,
+                pools.data()+(side*10+regions[point])*c, c);
     }
-    void copy_points(std::vector<std::int16_t>& saved, std::vector<std::int16_t>& data,
+    template<typename T>
+    void copy_points(std::vector<T>& saved, std::vector<T>& data,
                      const std::vector<int>& points, bool restore) {
         saved.resize(2*points.size()*c);
         std::size_t offset = 0;
@@ -241,9 +281,9 @@ struct NnueEvaluator::State {
             offset += c;
         }
     }
-    std::vector<std::int16_t> input(bool value) const {
+    void input(bool value, std::span<std::int16_t> result) const {
+        GOMOKU_SCOPE_PHASE(value ? profile::Phase::value_input : profile::Phase::policy_input);
         const int groups = value ? 10 : 1;
-        std::vector<std::int16_t> result(aligned(groups*2*c));
         for (int group = 0; group < groups; ++group) for (int relative = 0; relative < 2; ++relative) {
             const int side = (static_cast<int>(turn)-1+relative)%2;
             for (int channel = 0; channel < c; ++channel)
@@ -252,71 +292,106 @@ struct NnueEvaluator::State {
         }
         result[groups*2*c] = turn == Color::black ? 256 : 0;
         result[groups*2*c+1] = static_cast<std::int16_t>(size*256/20);
-        return result;
     }
-    std::vector<std::int64_t> linear(int tensor, std::span<const std::int16_t> values) const {
+    void linear(int tensor, std::span<const std::int16_t> values, std::span<std::int64_t> result) const {
+        GOMOKU_SCOPE_PHASE(tensor == 4 ? profile::Phase::value_hidden :
+            tensor == 6 ? profile::Phase::value_output :
+            tensor == 8 ? profile::Phase::policy_local :
+            tensor == 10 ? profile::Phase::policy_global : profile::Phase::policy_output);
         const auto& weights = model->tensors_[tensor];
         const auto& biases = model->tensors_[tensor+1];
-        std::vector<std::int64_t> result(biases.size());
         for (std::size_t row = 0; row < biases.size(); ++row) {
-            auto sum = std::int64_t(biases[row])*256;
             const auto* weight = weights.data()+row*values.size();
-            for (std::size_t i = 0; i < values.size(); ++i) sum += std::int64_t(weight[i])*values[i];
-            result[row] = sum;
+            result[row] = std::int64_t(biases[row])*256 + nnue_kernels::dot(weight, values.data(), static_cast<int>(values.size()));
         }
-        return result;
     }
 };
 
 NnueEvaluator::NnueEvaluator(std::shared_ptr<const NnueModel> model) {
+    GOMOKU_SCOPE(evaluator);
     if (!model) throw std::invalid_argument("NNUE model required");
     state_ = std::make_unique<State>(std::move(model));
 }
 NnueEvaluator::~NnueEvaluator() = default;
 void NnueEvaluator::reset(const Position& position) {
+    GOMOKU_SCOPE(reset);
     auto& s = *state_;
     if (!s.model->supports(position)) throw std::invalid_argument("NNUE model does not support this board/rule");
     s.turn = position.turn(); s.hash = position.hash(); s.depth = 0;
     std::fill(s.spatial.begin(), s.spatial.end(), 0);
     std::fill(s.pools.begin(), s.pools.end(), 0);
-    for (int point = 0; point < s.count; ++point) s.update_merged(position, point);
-    for (int point = 0; point < s.count; ++point) s.update_spatial(point);
+    {
+        GOMOKU_SCOPE(reset_features);
+        for (int point = 0; point < s.count; ++point) {
+            s.rebuild_patterns(position, point);
+            s.update_merged(point);
+        }
+    }
+    {
+        GOMOKU_SCOPE(reset_spatial);
+        for (int point = 0; point < 2*s.count; ++point) for (int channel = 0; channel < s.c; ++channel)
+            s.preactivation[point*s.c+channel] = int(s.model->tensors_[3][channel])*256;
+        for (int point = 0; point < s.count; ++point) s.propagate(point, false);
+        for (int point = 0; point < s.count; ++point) s.update_spatial(point);
+    }
 }
 void NnueEvaluator::push(const Position& position, Move move) {
+    GOMOKU_SCOPE(push);
     auto& s = *state_;
     if (!s.model->supports(position) || s.turn == Color::empty || position.turn() == s.turn ||
         !position.contains(move) || position.at(move) != s.turn)
         throw std::logic_error("Invalid NNUE push");
     if (s.depth == static_cast<int>(s.frames.size())) s.frames.emplace_back();
     auto& frame = s.frames[s.depth];
-    frame.point = move.y*s.size+move.x; frame.hash = s.hash; frame.pools = s.pools;
+    frame.point = move.y*s.size+move.x; frame.hash = s.hash;
     const auto& points = s.affected[frame.point];
-    s.copy_points(frame.merged, s.merged, points.merged, false);
-    s.copy_points(frame.spatial, s.spatial, points.spatial, false);
-    for (int point : points.merged) s.update_merged(position, point);
-    for (int point : points.spatial) s.update_spatial(point);
+    {
+        GOMOKU_SCOPE(save);
+        frame.pools = s.pools;
+        s.copy_points(frame.merged, s.merged, points.merged, false);
+        s.copy_points(frame.spatial, s.spatial, points.spatial, false);
+        s.copy_points(frame.preactivation, s.preactivation, points.spatial, false);
+    }
+    {
+        GOMOKU_SCOPE(features);
+        s.change_patterns(frame.point, s.turn, 1);
+        for (int point : points.merged) s.update_merged(point);
+    }
+    {
+        GOMOKU_SCOPE(spatial);
+        for (int point : points.merged) s.propagate(point, true);
+        for (int point : points.spatial) s.update_spatial(point);
+    }
     ++s.depth; s.hash = position.hash(); s.turn = position.turn();
 }
 void NnueEvaluator::pop() {
+    GOMOKU_SCOPE(pop);
     auto& s = *state_;
     if (s.depth == 0) throw std::logic_error("NNUE stack underflow");
     auto& frame = s.frames[--s.depth];
     const auto& points = s.affected[frame.point];
     s.copy_points(frame.merged, s.merged, points.merged, true);
     s.copy_points(frame.spatial, s.spatial, points.spatial, true);
+    s.copy_points(frame.preactivation, s.preactivation, points.spatial, true);
+    s.change_patterns(frame.point, opposite(s.turn), -1);
     s.pools = frame.pools; s.hash = frame.hash; s.turn = opposite(s.turn);
 }
 std::array<double, 3> NnueEvaluator::value_logits(const Position& position) const {
+    GOMOKU_SCOPE(value);
     auto& s = *state_;
     s.check(position);
-    const auto hidden = s.linear(4, s.input(true));
-    std::vector<std::int16_t> activated(hidden.size());
-    std::transform(hidden.begin(), hidden.end(), activated.begin(), activate);
-    const auto values = s.linear(6, activated);
-    return {values[0]/262144.0, values[1]/262144.0, values[2]/262144.0};
+    s.input(true, s.value_input);
+    s.linear(4, s.value_input, s.value_hidden);
+    {
+        GOMOKU_SCOPE(value_activation);
+        std::transform(s.value_hidden.begin(), s.value_hidden.end(), s.value_activated.begin(), activate);
+    }
+    s.linear(6, s.value_activated, s.value_output);
+    return {s.value_output[0]/262144.0, s.value_output[1]/262144.0, s.value_output[2]/262144.0};
 }
 int NnueEvaluator::evaluate(const Position& position) const {
     const auto logits = value_logits(position);
+    GOMOKU_SCOPE(score);
     const auto maximum = *std::max_element(logits.begin(), logits.end());
     const double win = std::exp(logits[0]-maximum), draw = std::exp(logits[1]-maximum), loss = std::exp(logits[2]-maximum);
     // A bounded side-to-move score. These are evaluation units, not mate scores
@@ -324,23 +399,32 @@ int NnueEvaluator::evaluate(const Position& position) const {
     return static_cast<int>(std::lround(600*std::atanh(std::clamp((win-loss)/(win+draw+loss), -0.999999, 0.999999))));
 }
 std::vector<double> NnueEvaluator::move_scores(const Position& position, std::span<const Move> moves) const {
+    GOMOKU_SCOPE(policy);
     auto& s = *state_;
     s.check(position);
-    const auto global = s.linear(10, s.input(false));
+    s.input(false, s.policy_input);
+    s.linear(10, s.policy_input, s.policy_global);
     std::vector<double> result;
     result.reserve(moves.size());
-    std::vector<std::int16_t> paired(2*s.c), activated(global.size());
     for (Move move : moves) {
         if (!position.contains(move)) throw std::invalid_argument("NNUE policy move outside board");
         if (position.at(move) != Color::empty) { result.push_back(-1e9); continue; }
         const int point = move.y*s.size+move.x;
-        for (int relative = 0; relative < 2; ++relative) {
-            const int side = (static_cast<int>(s.turn)-1+relative)%2;
-            std::copy_n(s.spatial.data()+(side*s.count+point)*s.c, s.c, paired.data()+relative*s.c);
+        {
+            GOMOKU_SCOPE(policy_pair);
+            for (int relative = 0; relative < 2; ++relative) {
+                const int side = (static_cast<int>(s.turn)-1+relative)%2;
+                std::copy_n(s.spatial.data()+(side*s.count+point)*s.c, s.c, s.paired.data()+relative*s.c);
+            }
         }
-        const auto local = s.linear(8, paired);
-        for (std::size_t i = 0; i < local.size(); ++i) activated[i] = activate(local[i]+global[i]);
-        result.push_back(s.linear(12, activated)[0]/262144.0);
+        s.linear(8, s.paired, s.policy_local);
+        {
+            GOMOKU_SCOPE(policy_activation);
+            for (std::size_t i = 0; i < s.policy_local.size(); ++i)
+                s.policy_activated[i] = activate(s.policy_local[i]+s.policy_global[i]);
+        }
+        s.linear(12, s.policy_activated, s.policy_output);
+        result.push_back(s.policy_output[0]/262144.0);
     }
     return result;
 }

@@ -19,6 +19,7 @@
     "build:packages": "pnpm --filter @gomoku/contracts --filter @gomoku/sdk --filter @gomoku/engine-wasm build",
     "engine:build": "node scripts/tasks.mjs engine",
     "engine:competition": "node scripts/tasks.mjs competition",
+    "engine:profile": "node scripts/profile.mjs",
     "wasm:setup": "node scripts/wasm.mjs setup",
     "wasm:build": "node scripts/wasm.mjs build",
     "typecheck": "pnpm -r typecheck",

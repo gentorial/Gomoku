@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gomoku 搜索耗时测量</title>
+  <style>
+    body {
+      max-width: 980px;
+      margin: 48px auto;
+      padding: 0 24px;
+      color: #242624;
+      background: #fafbf9;
+      font:
+        15px/1.7 system-ui,
+        sans-serif;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 4px;
+    }
+    p {
+      color: #626862;
+    }
+    button {
+      padding: 10px 20px;
+      border: 1px solid #bbc3bc;
+      border-radius: 6px;
+      background: white;
+      font: inherit;
+      cursor: pointer;
+    }
+    pre {
+      white-space: pre-wrap;
+      font-size: 13px;
+      padding-top: 24px;
+      border-top: 1px solid #dce1db;
+    }
+    #status {
+      font-weight: 600;
+      margin: 20px 0;
+    }
+  </style>
+  <h1>Gomoku 搜索耗时测量</h1>
+  <p>7 个固定局面 · 每项预热 2 次、记录 5 次 · 普通构建与诊断构建交替运行 · 浏览器 Web Worker</p>
+  <button id="run">开始测量</button>
+  <div id="status">待测量</div>
+  <pre id="log"></pre>
+  <script type="module">
+    const run = document.querySelector("#run");
+    const status = document.querySelector("#status");
+    const log = document.querySelector("#log");
+    run.onclick = () => {
+      run.disabled = true;
+      log.textContent = "";
+      status.textContent = "正在加载模型";
+      const worker = new Worker("/worker.mjs", { type: "module" });
+      worker.onmessage = ({ data }) => {
+        if (data.progress) {
+          status.textContent = data.progress;
+          log.textContent += data.progress + "\n";
+        }
+        if (data.error) {
+          status.textContent = "测量失败";
+          log.textContent += data.error;
+          run.disabled = false;
+          worker.terminate();
+        }
+        if (data.complete) {
+          status.textContent = "测量完成，全部搜索结果与节点数一致，报告已保存";
+          log.textContent +=
+            "\n" +
+            data.report.rows
+              .map(
+                (row) =>
+                  `${row.label}：${row.baseline.medianMs.toFixed(2)} ms，深度 ${row.baseline.result.depth}，${row.baseline.result.nodes} 节点`,
+              )
+              .join("\n");
+          run.disabled = false;
+          worker.terminate();
+        }
+      };
+      worker.onerror = (event) => {
+        status.textContent = "测量失败";
+        log.textContent += event.message;
+        run.disabled = false;
+        worker.terminate();
+      };
+      worker.postMessage({ run: true });
+    };
+  </script>
+</html>

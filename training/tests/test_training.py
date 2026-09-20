@@ -400,7 +400,8 @@ class TrainingTests(unittest.TestCase):
             manifest = make_data(root)
             config = Config(
                 model=ModelConfig(
-                    mapping_width=4, channels=4, value_hidden=8, policy_hidden=4
+                    # Non-vector-aligned widths exercise native/WASM SIMD tails.
+                    mapping_width=4, channels=7, value_hidden=9, policy_hidden=5
                 ),
                 data=DataConfig(str(manifest)),
                 run=RunConfig(

@@ -12,8 +12,8 @@ public:
     virtual void push(const Position&, Move) {}
     virtual void pop() {}
     virtual int evaluate(const Position& position) const = 0;
-    // Optional policy logits in candidate order. Tactical wins/blocks always
-    // take precedence in search; an empty vector keeps geometric ordering.
+    // Optional policy logits in candidate order. Search retains all immediate
+    // wins/blocks; an empty vector keeps geometric ordering of quiet moves.
     virtual std::vector<double> move_scores(const Position&, std::span<const Move>) const { return {}; }
 };
 class HandcraftedEvaluator final : public Evaluator {
