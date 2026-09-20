@@ -140,11 +140,7 @@ WASM 搜索是独立 Worker 内的单线程任务，不阻塞页面；取消会�
 
     uv run --package gomoku-desktop gomoku-desktop
 
-也保留原有启动路径，直接使用系统 Python：
-
-    python GUI/src/gomoku.py
-
-GUI/src/gomoku.py 现在是兼容启动器，实际界面位于 apps/desktop。
+桌面界面位于 apps/desktop，由 uv workspace 管理。
 Linux 桌面需要 Python 的 Tk 支持。桌面客户端默认连接构建出的 JSON Worker，
 旧的 START BLACK / MOVE row col 自定义协议已由版本化 JSON 协议替代。
 
