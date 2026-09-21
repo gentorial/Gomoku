@@ -111,7 +111,7 @@ def publish_directory(output, build):
     os.replace(staging, output)
 
 
-def run_arena(model, baseline, openings, output, time_ms, engine):
+def run_arena(model, baseline, openings, output, time_ms, engine, *, workers=4):
     opening_set = read_json(openings)
     report = {"format": "gomoku-arena-v1", "protocol": "worker",
               "engines": {"a": {"executable": file_identity(engine), "model": file_identity(model)},
@@ -126,12 +126,13 @@ def run_arena(model, baseline, openings, output, time_ms, engine):
         old_games = old["games"]
 
     def save(games):
-        report.update(summary=summary(games), paired=paired_summary(games), games=games)
+        report.update(summary=summary(games), paired=paired_summary(games), games=games,
+                      execution={"requestedWorkers": workers, "unit": "opening-pair"})
         write_json(output, report)
         print(json.dumps({"event": "campaign-arena", "output": str(output), **report["summary"]}), flush=True)
 
     games = worker_match(engine, engine, opening_set["openings"], model_a=model, model_b=baseline,
-                         time_ms=time_ms, depth=12, on_game=save, completed=old_games)
+                         time_ms=time_ms, depth=12, on_game=save, completed=old_games, workers=workers)
     save(games)
     return report
 
@@ -154,7 +155,10 @@ def promotion_gate(report, expected_pairs=32):
 
 
 def campaign(root, *, general_config, multipv_config, warmup_config, training_config,
-             baseline_checkpoint, baseline_model, minimum_unique=1_000_000, publish=False, push=False):
+             baseline_checkpoint, baseline_model, minimum_unique=1_000_000, publish=False, push=False,
+             arena_workers=4):
+    if type(arena_workers) is not int or arena_workers < 1:
+        raise ValueError("Arena workers must be a positive integer")
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     configs = [general_config, multipv_config, warmup_config, training_config]
@@ -258,7 +262,7 @@ def campaign(root, *, general_config, multipv_config, warmup_config, training_co
                 if read_json(export_manifest)["checkpointSha256"] != file_sha256(checkpoint):
                     raise ValueError("Export identity does not match candidate")
                 report = run_arena(export_dir / "weights.gnn", baseline_model, root / "development-openings.json",
-                                   root / f"development-{checkpoint.stem}.json", 300, binary())
+                                   root / f"development-{checkpoint.stem}.json", 300, binary(), workers=arena_workers)
                 evaluations.append((report["summary"]["scoreA"], -report["summary"]["failures"], checkpoint, export_dir))
             # Failure-free candidates take precedence; ties favor validation best.
             selected = max(evaluations, key=lambda item: (item[1], item[0]))
@@ -267,9 +271,9 @@ def campaign(root, *, general_config, multipv_config, warmup_config, training_co
                          "candidates": [{"checkpoint": str(c), "developmentScore": s, "failures": -f}
                                         for s, f, c, _ in evaluations]}
             write_json(root / "selection.json", selection)
-            status("promotion-arena", selected=str(checkpoint), timeMs=3000, pairs=32)
+            status("promotion-arena", selected=str(checkpoint), timeMs=3000, pairs=32, arenaWorkers=arena_workers)
             report = run_arena(export_dir / "weights.gnn", baseline_model, root / "promotion-openings.json",
-                               root / "promotion-arena.json", 3000, binary())
+                               root / "promotion-arena.json", 3000, binary(), workers=arena_workers)
             gate = promotion_gate(report)
             write_json(root / "promotion.json", {**gate, "selection": selection})
             status("heldout-and-runtime-assessment", promotionGate=gate["passed"])
@@ -310,6 +314,7 @@ def main():
     parser.add_argument("--baseline-checkpoint", type=Path, default=ROOT / "artifacts/training/rapfi-calibrated-v1/best.pt")
     parser.add_argument("--baseline-model", type=Path, default=ROOT / "artifacts/models/rapfi-calibrated-v1/weights.gnn")
     parser.add_argument("--minimum-unique", type=int, default=1_000_000)
+    parser.add_argument("--arena-workers", type=int, default=4, help="Concurrent opening pairs during evaluation")
     parser.add_argument("--publish", action="store_true", help="Publish only if the independent promotion gate passes")
     parser.add_argument("--push", action="store_true", help="Commit and push the promoted website pin and reference fixture")
     args = parser.parse_args()
@@ -318,7 +323,8 @@ def main():
     campaign(args.output, general_config=args.general_config, multipv_config=args.multipv_config,
              warmup_config=args.warmup_config, training_config=args.training_config,
              baseline_checkpoint=args.baseline_checkpoint, baseline_model=args.baseline_model,
-             minimum_unique=args.minimum_unique, publish=args.publish, push=args.push)
+             minimum_unique=args.minimum_unique, publish=args.publish, push=args.push,
+             arena_workers=args.arena_workers)
 
 
 if __name__ == "__main__":
