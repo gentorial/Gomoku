@@ -136,6 +136,7 @@ def promote(root, *, publish=False, push=False):
     pnpm = shutil.which("pnpm.cmd" if sys.platform == "win32" else "pnpm")
     if not pnpm:
         raise ValueError("pnpm is required to validate the promoted website")
+    command(pnpm, "exec", "prettier", "--write", pin_path, fixture)
     command(pnpm, "--filter", "@gomoku/web", "build")
     if push:
         paths = [str(pin_path.relative_to(ROOT)), str(fixture.relative_to(ROOT))]
