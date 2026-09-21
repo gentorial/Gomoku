@@ -95,6 +95,29 @@ prepare 校验每批标注摘要、按前 6 手的 D4 规范开局隔离集合�
 这组命令使用 70% / 20% / 10% 的开局哈希区间，阶段快照和最终数据必须保持相同划分参数。
 完整运行、检查点、评估和导出说明见 [训练文档](../training/README.md)。
 
+## 固定开局的配对对战
+
+原有 Gomocup 对战入口继续保留。比较两个 NNUE 或两版共用引擎时，使用 Worker
+协议，显式指定模型，避免忘记加载权重而退回基础评估：
+
+```powershell
+uv run --package gomoku-tools gomoku-arena --protocol worker --openings tests/fixtures/arena-openings-v1.json --model-a artifacts/models/rapfi-mate-v2/weights.gnn --model-b artifacts/models/rapfi-calibrated-v1/weights.gnn --time-ms 300 --depth 8 --output artifacts/arena/model-comparison.json
+```
+
+每个开局自动下两盘并交换双方引擎；Worker 模式按开局数决定局数，不使用
+Gomocup 模式的 `--games`。每盘都下到规则库确认的真实终局，不用评价分提前裁定。
+`--engine-a` / `--engine-b` 可指定不同版本的 Worker；两个模型相同则隔离搜索改动，
+两个程序相同则隔离模型改动。每次搜索的 TT 和增量状态独立，进程只复用加载的权重。
+
+结果在每盘结束后保存：程序/权重/开局文件的 SHA-256、时限、最大深度、完整棋谱，
+以及每一步实际返回的深度、节点数、用时、评价和 PV。非法开局在比赛前报错，
+协议/进程故障单独记录为 failure，不能用含故障的战绩判断模型优劣。
+
+`arena-openings-v1.json` 固定八个测试集开局组，各取第十手局面，教师分数绝对值
+不超过 100。选取只看原数据顺序、开局归属及初始分数，不依据对战结果挑选。
+这是小样本研发比较，不提供 Elo 或统计显著性结论；调整策略后需要新的保留开局
+进行最终验证，不能反复针对同一组开局调参。
+
 ## 回归检查
 
 `tests/fixtures/rapfi-250615.binpack` 是由真实官方教师生成的两盘回归夹具，

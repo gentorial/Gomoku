@@ -1,0 +1,416 @@
+{
+  "format": "gomoku-openings-v1",
+  "size": 15,
+  "rule": "freestyle",
+  "selection": "First eight distinct test opening groups with 10 plies and abs(teacher eval) <= 100, in source order. Seed 42; selected before arena outcomes.",
+  "openings": [
+    {
+      "id": "483f8a2a81473050643cd0e373d374d11b03440e96505b4a807ae11618d2f8a9",
+      "moves": [
+        {
+          "x": 4,
+          "y": 1
+        },
+        {
+          "x": 3,
+          "y": 5
+        },
+        {
+          "x": 3,
+          "y": 3
+        },
+        {
+          "x": 4,
+          "y": 5
+        },
+        {
+          "x": 1,
+          "y": 5
+        },
+        {
+          "x": 2,
+          "y": 2
+        },
+        {
+          "x": 2,
+          "y": 6
+        },
+        {
+          "x": 3,
+          "y": 6
+        },
+        {
+          "x": 7,
+          "y": 5
+        },
+        {
+          "x": 5,
+          "y": 3
+        }
+      ],
+      "source": {
+        "file": "job-00000.annotations.jsonl",
+        "gameId": "af39f9e99010fad28050f16c9e32986b38ae6e29a5a3fca765178b0965732803",
+        "teacherScore": -36,
+        "split": "test"
+      }
+    },
+    {
+      "id": "4e17d5955199378d95dbb5d6f45b8733d8253fb2792a5caff279c34343a4f004",
+      "moves": [
+        {
+          "x": 8,
+          "y": 10
+        },
+        {
+          "x": 6,
+          "y": 7
+        },
+        {
+          "x": 10,
+          "y": 12
+        },
+        {
+          "x": 9,
+          "y": 12
+        },
+        {
+          "x": 9,
+          "y": 7
+        },
+        {
+          "x": 7,
+          "y": 10
+        },
+        {
+          "x": 6,
+          "y": 8
+        },
+        {
+          "x": 7,
+          "y": 9
+        },
+        {
+          "x": 7,
+          "y": 8
+        },
+        {
+          "x": 5,
+          "y": 8
+        }
+      ],
+      "source": {
+        "file": "job-00001.annotations.jsonl",
+        "gameId": "ce8df9452ff0a4de8ae6e34c63f9ced4c1a517933a21544ffd0e717e7f28653a",
+        "teacherScore": 43,
+        "split": "test"
+      }
+    },
+    {
+      "id": "9ca7af85ef3b931ce8617c742db73e1cfa627e037f242bead1860b22bdf64ef1",
+      "moves": [
+        {
+          "x": 7,
+          "y": 9
+        },
+        {
+          "x": 6,
+          "y": 7
+        },
+        {
+          "x": 5,
+          "y": 7
+        },
+        {
+          "x": 8,
+          "y": 9
+        },
+        {
+          "x": 10,
+          "y": 7
+        },
+        {
+          "x": 7,
+          "y": 7
+        },
+        {
+          "x": 9,
+          "y": 10
+        },
+        {
+          "x": 10,
+          "y": 11
+        },
+        {
+          "x": 4,
+          "y": 11
+        },
+        {
+          "x": 6,
+          "y": 8
+        }
+      ],
+      "source": {
+        "file": "job-00002.annotations.jsonl",
+        "gameId": "092c8a3908619c07ab97e2aa12df62917e513ace88838fdd880c578dba8dac1b",
+        "teacherScore": 67,
+        "split": "test"
+      }
+    },
+    {
+      "id": "e55e3111de16132918dd0b6bfd67545fc88e383fd27adf43f8fd06d67562c4bd",
+      "moves": [
+        {
+          "x": 11,
+          "y": 4
+        },
+        {
+          "x": 8,
+          "y": 6
+        },
+        {
+          "x": 8,
+          "y": 4
+        },
+        {
+          "x": 12,
+          "y": 4
+        },
+        {
+          "x": 10,
+          "y": 4
+        },
+        {
+          "x": 10,
+          "y": 5
+        },
+        {
+          "x": 11,
+          "y": 2
+        },
+        {
+          "x": 11,
+          "y": 5
+        },
+        {
+          "x": 9,
+          "y": 5
+        },
+        {
+          "x": 9,
+          "y": 4
+        }
+      ],
+      "source": {
+        "file": "job-00004.annotations.jsonl",
+        "gameId": "e6db73ea2004113117f7d7a3ddd93520a98b7a9ecec9c407193d9d0fc9c6b8d1",
+        "teacherScore": 10,
+        "split": "test"
+      }
+    },
+    {
+      "id": "5294a29bbb5add0fb22279288a684656e9e7514d6a55024111b49cfd6136df2d",
+      "moves": [
+        {
+          "x": 7,
+          "y": 11
+        },
+        {
+          "x": 8,
+          "y": 10
+        },
+        {
+          "x": 7,
+          "y": 9
+        },
+        {
+          "x": 10,
+          "y": 10
+        },
+        {
+          "x": 11,
+          "y": 13
+        },
+        {
+          "x": 9,
+          "y": 12
+        },
+        {
+          "x": 9,
+          "y": 8
+        },
+        {
+          "x": 7,
+          "y": 8
+        },
+        {
+          "x": 9,
+          "y": 10
+        },
+        {
+          "x": 8,
+          "y": 11
+        }
+      ],
+      "source": {
+        "file": "job-00005.annotations.jsonl",
+        "gameId": "8b4a8580c0ce92e2c092c5059022b49ea124e8b9aff7ed74377b88c1fef64c94",
+        "teacherScore": 4,
+        "split": "test"
+      }
+    },
+    {
+      "id": "db58b9e5f32e409a13e33d8257425b3feea4fa9de64edef19fd2e55e60d026bb",
+      "moves": [
+        {
+          "x": 9,
+          "y": 13
+        },
+        {
+          "x": 8,
+          "y": 9
+        },
+        {
+          "x": 8,
+          "y": 13
+        },
+        {
+          "x": 7,
+          "y": 13
+        },
+        {
+          "x": 8,
+          "y": 11
+        },
+        {
+          "x": 6,
+          "y": 13
+        },
+        {
+          "x": 4,
+          "y": 7
+        },
+        {
+          "x": 6,
+          "y": 10
+        },
+        {
+          "x": 6,
+          "y": 11
+        },
+        {
+          "x": 5,
+          "y": 11
+        }
+      ],
+      "source": {
+        "file": "job-00006.annotations.jsonl",
+        "gameId": "9574dc7f23cc1e07536bc66a23906c07363b0dc6c38de7ba8d0bc11c98a827bc",
+        "teacherScore": 73,
+        "split": "test"
+      }
+    },
+    {
+      "id": "3949a206a18393d5e92ea118108cab57a5680e03b54cb7222d2296efc125ac6d",
+      "moves": [
+        {
+          "x": 8,
+          "y": 1
+        },
+        {
+          "x": 9,
+          "y": 6
+        },
+        {
+          "x": 8,
+          "y": 5
+        },
+        {
+          "x": 11,
+          "y": 6
+        },
+        {
+          "x": 10,
+          "y": 6
+        },
+        {
+          "x": 11,
+          "y": 1
+        },
+        {
+          "x": 12,
+          "y": 0
+        },
+        {
+          "x": 9,
+          "y": 4
+        },
+        {
+          "x": 10,
+          "y": 5
+        },
+        {
+          "x": 9,
+          "y": 5
+        }
+      ],
+      "source": {
+        "file": "job-00006.annotations.jsonl",
+        "gameId": "1ac2637e9d7b943b607b8f7468b33f568d76ae29fd74ff7243fb0c7f77e65f47",
+        "teacherScore": 21,
+        "split": "test"
+      }
+    },
+    {
+      "id": "d1b87450cd243779c4c2afa6b2201eec11c76fd70009d2c63ec485f7b7e592ae",
+      "moves": [
+        {
+          "x": 12,
+          "y": 9
+        },
+        {
+          "x": 10,
+          "y": 5
+        },
+        {
+          "x": 9,
+          "y": 7
+        },
+        {
+          "x": 9,
+          "y": 6
+        },
+        {
+          "x": 10,
+          "y": 9
+        },
+        {
+          "x": 11,
+          "y": 8
+        },
+        {
+          "x": 10,
+          "y": 7
+        },
+        {
+          "x": 11,
+          "y": 7
+        },
+        {
+          "x": 12,
+          "y": 3
+        },
+        {
+          "x": 10,
+          "y": 6
+        }
+      ],
+      "source": {
+        "file": "job-00006.annotations.jsonl",
+        "gameId": "a1ca1481443e033659765647195abebc277d2dc26e79dee066063b6e5529f611",
+        "teacherScore": 52,
+        "split": "test"
+      }
+    }
+  ]
+}

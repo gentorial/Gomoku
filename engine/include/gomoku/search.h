@@ -18,11 +18,15 @@ struct SearchOptions {
     bool transpositions = true;
     bool pvs = true;
     std::size_t table_entries = 1 << 18;
+    bool vcf = true;
+    std::uint64_t vcf_node_limit = 1024;
+    int vcf_max_plies = 32;
 };
 struct SearchStats {
     std::uint64_t tt_probes = 0, tt_hits = 0, tt_cutoffs = 0;
     std::uint64_t evaluator_pushes = 0, pvs_researches = 0;
     std::uint64_t preferred_cutoffs = 0;
+    std::uint64_t vcf_nodes = 0, vcf_wins = 0, vcf_unknown = 0;
 };
 struct SearchResult {
     std::optional<Move> best_move;

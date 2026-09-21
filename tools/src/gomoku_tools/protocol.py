@@ -20,9 +20,9 @@ def binary(name="gomoku-worker"):
 
 
 class EngineProcess:
-    def __init__(self, executable):
+    def __init__(self, executable, arguments=()):
         self.process = subprocess.Popen(
-            [str(executable)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            [str(executable), *map(str, arguments)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, encoding="utf-8", bufsize=1,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
@@ -87,8 +87,8 @@ class EngineProcess:
 
 
 class Worker(EngineProcess):
-    def __init__(self, executable=None):
-        super().__init__(executable or binary())
+    def __init__(self, executable=None, model=None):
+        super().__init__(executable or binary(), ("--model", model) if model is not None else ())
         self._lock = threading.Lock()
 
     def request(self, method, **params):

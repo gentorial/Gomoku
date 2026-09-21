@@ -140,7 +140,8 @@ uv run --frozen --package gomoku-training --extra xpu gomoku-train --config trai
 检查点包含模型、优化器、学习率计划配置、步数、采样游标及随机数状态。
 同时保存 PyTorch/设备信息、Git 版本和训练源码摘要，以识别尚未提交的代码变化。
 写入通过同目录临时文件原子替换；读取使用 `weights_only=True`。
-指标包含老师/结果/policy 的有效样本数、普通教师标量 MSE、policy 前 1/5 名一致率。
+指标包含老师/结果/policy 的有效样本数、普通教师标量 MSE、policy 前 1/5 名一致率，
+以及 mate 样本数、交叉熵和胜负分类准确率。
 缺失标签不会按零值或和棋处理。这些衡量拟合和泛化，不代表 Elo 或比赛胜率。
 
 `--stop-after N` 在完成 N 次更新后暂停，不改变总步数或学习率计划。
@@ -152,7 +153,7 @@ Ctrl+C 请求在当前完整更新完成后保存。`--resume` 拒绝更改影�
 
 混合监督之后可按独立 validation 的评分误差决定是否做教师校准。
 [校准配置](configs/rapfi-calibrate.toml) 保持同一正式网络，执行固定 1,000 步、
-只使用普通教师评分训练 value，同时以 0.1 权重维持 policy；原始终局标签仍保留在数据内。
+使用教师评分训练 value，同时以 0.1 权重维持 policy；原始终局标签仍保留在数据内。
 该阶段的损失不能直接与混合阶段日志比较，应用 assess 统一配置重算。
 
 ```powershell
@@ -160,6 +161,24 @@ uv run --frozen --package gomoku-training --extra xpu gomoku-train --config trai
 ```
 
 确定校准策略时使用 validation，test 留作策略确定后的最终报告。
+
+教师标签的优先级为显式 WDL、带符号 mate、普通 eval。正/负 mate 按当前行棋方
+编码为确定胜/负，用交叉熵监督 value；距离不作为普通分数缩放。
+缺失标签、零 mate 和上下界标签不被当成确定胜负。旧版校准漏掉了 mate 的 value
+监督；[修正后的对照配置](configs/rapfi-mate-v2.toml) 保持原网络、数据和 1,000 步预算，
+从旧校准的相同初始检查点开始，隔离标签修正的影响：
+
+```powershell
+uv run --frozen --package gomoku-training --extra xpu gomoku-train --config training/configs/rapfi-mate-v2.toml --initialize artifacts/training/rapfi-calibrated-v1/initial.pt
+```
+
+新旧模型应使用同一个修正后的 loss 配置重算独立集，并使用 tools 的固定开局
+配对对战比较。损失下降本身不等于棋力提升，也不自动替换网页发布模型。
+
+本轮 3,188 个测试局面中，mate 标签准确率从 55.40% 提高到 66.19%，普通教师
+标量 MSE 从 0.06604 降至 0.06455；终局结果分类准确率从 70.29% 降至 56.18%。
+同搜索的 16 盘配对战绩为 5 胜、2 和、9 负，故 v2 未晋级网页模型。
+完整对照见 [本轮记录](../docs/benchmarks/2026-09-21-vcf.json)，后续调参需要新的保留开局。
 
 训练按固定间隔查看独立 validation 的固定样本上限。完整测试集单独运行：
 

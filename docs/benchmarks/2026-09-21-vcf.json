@@ -1,0 +1,815 @@
+{
+  "format": "gomoku-development-comparison-v1",
+  "date": "2026-09-21",
+  "baselineGitRevision": "328270dbbc3ea1250ffe4ffabc4901c35d860207",
+  "conditions": {
+    "native": "Windows 11, Intel Core Ultra X7 358H, GCC 13.2.0, RelWithDebInfo; one search at a time",
+    "wasm": "Emscripten 4.0.23, Node 26.3.0, same shared engine; timings are individual observations, not speed benchmarks",
+    "rules": "freestyle, 15x15",
+    "selection": "Eight fixed held-out opening groups, paired colors; chosen before games, no outcome adjudication",
+    "scope": "Small development comparison, no Elo or significance claim; no data expansion or model-size change"
+  },
+  "openings": {
+    "fixture": "tests/fixtures/arena-openings-v1.json",
+    "sha256": "933ff50c740b3af490a5e9af00f1b9ed17b9967e20b4c7148ddaa609a22cb252",
+    "exactArenaInput": "artifacts/arena/openings-used.json",
+    "exactArenaInputSha256": "e1db64c1ee2065957c5ef51fd220395f6ad7d747eb8edaba1d23522509eeb6f8"
+  },
+  "training": {
+    "configuration": "training/configs/rapfi-mate-v2.toml",
+    "steps": 1000,
+    "device": "Intel Arc B390 XPU",
+    "sameInitializationAsBaseline": true,
+    "datasetSha256": "f0dbf865d9cb50501a3f2ef61ae19fb036fd2b80123446d3de8f40765b44dbbc",
+    "checkpointSha256": "9b1c02c0889d59dda93a4fe45b11ecf175481879df25698529a38f68e427f738",
+    "trainingSource": {
+      "trainingSourceSha256": "8187e7697e19a4a014e55f8c4b683c18c64c9ffc2d9020745883efbba2de7898",
+      "gitRevision": "328270dbbc3ea1250ffe4ffabc4901c35d860207"
+    },
+    "comparisonLossConfig": {
+      "teacher_weight": 1.0,
+      "result_weight": 0.0,
+      "policy_weight": 0.1,
+      "score_scale": 400.0
+    },
+    "baseline": {
+      "validation": {
+        "split": "validation",
+        "positions": 5340,
+        "datasetSha256": "f0dbf865d9cb50501a3f2ef61ae19fb036fd2b80123446d3de8f40765b44dbbc",
+        "checkpointStep": 1000,
+        "device": "xpu",
+        "loss": 0.387649160475655,
+        "valueLoss": 0.1958533700471628,
+        "policyLoss": 1.9179578719067663,
+        "resultAccuracy": 0.6840823970037453,
+        "teacherScalarMse": 0.09680926818649994,
+        "policyTop1Agreement": 0.45730337078651684,
+        "policyTop5Agreement": 0.7835205992509363,
+        "teacherCount": 5340,
+        "teacherMateCount": 715,
+        "teacherMateLoss": 0.8365232597697865,
+        "teacherMateAccuracy": 0.5720279720279721,
+        "resultCount": 5340,
+        "policyCount": 5340,
+        "effective": 5340
+      },
+      "test": {
+        "split": "test",
+        "positions": 3188,
+        "datasetSha256": "f0dbf865d9cb50501a3f2ef61ae19fb036fd2b80123446d3de8f40765b44dbbc",
+        "checkpointStep": 1000,
+        "device": "xpu",
+        "loss": 0.3400938174917527,
+        "valueLoss": 0.1531162083231573,
+        "policyLoss": 1.869776058862619,
+        "resultAccuracy": 0.7029485570890841,
+        "teacherScalarMse": 0.06604454708613958,
+        "policyTop1Agreement": 0.4639272271016311,
+        "policyTop5Agreement": 0.7920326223337516,
+        "teacherCount": 3188,
+        "teacherMateCount": 352,
+        "teacherMateLoss": 0.8546367568725889,
+        "teacherMateAccuracy": 0.5539772727272727,
+        "resultCount": 3188,
+        "policyCount": 3188,
+        "effective": 3188
+      }
+    },
+    "candidate": {
+      "validation": {
+        "split": "validation",
+        "positions": 5340,
+        "datasetSha256": "f0dbf865d9cb50501a3f2ef61ae19fb036fd2b80123446d3de8f40765b44dbbc",
+        "checkpointStep": 1000,
+        "device": "xpu",
+        "loss": 0.365867675994331,
+        "valueLoss": 0.1737874957357265,
+        "policyLoss": 1.920801768823063,
+        "resultAccuracy": 0.552434456928839,
+        "teacherScalarMse": 0.09459864581663041,
+        "policyTop1Agreement": 0.4558052434456929,
+        "policyTop5Agreement": 0.7835205992509363,
+        "teacherCount": 5340,
+        "teacherMateCount": 715,
+        "teacherMateLoss": 0.6860230628427092,
+        "teacherMateAccuracy": 0.6503496503496503,
+        "resultCount": 5340,
+        "policyCount": 5340,
+        "effective": 5340
+      },
+      "test": {
+        "split": "test",
+        "positions": 3188,
+        "datasetSha256": "f0dbf865d9cb50501a3f2ef61ae19fb036fd2b80123446d3de8f40765b44dbbc",
+        "checkpointStep": 1000,
+        "device": "xpu",
+        "loss": 0.31997488690084464,
+        "valueLoss": 0.13266940030903743,
+        "policyLoss": 1.873054827919868,
+        "resultAccuracy": 0.5617942283563363,
+        "teacherScalarMse": 0.06454993507023954,
+        "policyTop1Agreement": 0.46141781681304894,
+        "policyTop5Agreement": 0.7926599749058971,
+        "teacherCount": 3188,
+        "teacherMateCount": 352,
+        "teacherMateLoss": 0.6814955423840068,
+        "teacherMateAccuracy": 0.6619318181818182,
+        "resultCount": 3188,
+        "policyCount": 3188,
+        "effective": 3188
+      }
+    }
+  },
+  "runtimeValidation": {
+    "model": "rapfi-mate-v2",
+    "sha256": "c59c5c6e90e8640251471fc6c390f700c05d48c62f31af77e83fdfaee6415a48",
+    "independentReference": {
+      "positions": 8,
+      "maximumAbsoluteError": {
+        "value": 0.0,
+        "policy": 0.0
+      },
+      "tolerance": 2e-5,
+      "passed": true
+    },
+    "native": {
+      "vectors": 8,
+      "valueLogits": 24,
+      "policyLogits": 1800,
+      "incrementalAndUndoChecks": 184,
+      "maxAbsoluteError": 0
+    },
+    "wasm": {
+      "vectors": 8,
+      "valueLogits": 24,
+      "policyLogits": 1800,
+      "maxAbsoluteError": 0
+    },
+    "referenceVectorsSha256": "80810a5f7715000a13bdd8f4c281447b56b32d15ad87f5a4aaf1afb028b123dc"
+  },
+  "modelArena": {
+    "engines": {
+      "a": {
+        "executable": {
+          "path": "D:\\Projects\\Gomoku\\build\\dev\\bin\\gomoku-worker.exe",
+          "sha256": "f722151dac9ec4854266106cee8d23cadf8015095f33703cc92d6cb77e7449e1"
+        },
+        "model": {
+          "path": "D:\\Projects\\Gomoku\\artifacts\\models\\rapfi-mate-v2\\weights.gnn",
+          "sha256": "c59c5c6e90e8640251471fc6c390f700c05d48c62f31af77e83fdfaee6415a48"
+        }
+      },
+      "b": {
+        "executable": {
+          "path": "D:\\Projects\\Gomoku\\build\\dev\\bin\\gomoku-worker.exe",
+          "sha256": "f722151dac9ec4854266106cee8d23cadf8015095f33703cc92d6cb77e7449e1"
+        },
+        "model": {
+          "path": "D:\\Projects\\Gomoku\\artifacts\\models\\rapfi-calibrated-v1\\weights.gnn",
+          "sha256": "4ddd79cd821a2814c5a2cb762b52d5853ba03bc5e613f3d6c5e5344a6acd3e3a"
+        }
+      }
+    },
+    "limits": {
+      "timeMs": 300,
+      "maxDepth": 8
+    },
+    "summary": {
+      "games": 16,
+      "scoreA": 6.0,
+      "winsA": 5,
+      "draws": 2,
+      "winsB": 9,
+      "failures": 0
+    },
+    "openingPairs": 8,
+    "pairScoresA": [0.5, 1, 1, 0, 0.5, 0, 2, 1],
+    "games": [
+      {
+        "openingId": "483f8a2a81473050643cd0e373d374d11b03440e96505b4a807ae11618d2f8a9",
+        "aColor": "black",
+        "scoreA": 0.5,
+        "status": "draw",
+        "plies": 225,
+        "failure": null
+      },
+      {
+        "openingId": "483f8a2a81473050643cd0e373d374d11b03440e96505b4a807ae11618d2f8a9",
+        "aColor": "white",
+        "scoreA": 0,
+        "status": "black_win",
+        "plies": 33,
+        "failure": null
+      },
+      {
+        "openingId": "4e17d5955199378d95dbb5d6f45b8733d8253fb2792a5caff279c34343a4f004",
+        "aColor": "black",
+        "scoreA": 0,
+        "status": "white_win",
+        "plies": 24,
+        "failure": null
+      },
+      {
+        "openingId": "4e17d5955199378d95dbb5d6f45b8733d8253fb2792a5caff279c34343a4f004",
+        "aColor": "white",
+        "scoreA": 1,
+        "status": "white_win",
+        "plies": 24,
+        "failure": null
+      },
+      {
+        "openingId": "9ca7af85ef3b931ce8617c742db73e1cfa627e037f242bead1860b22bdf64ef1",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 75,
+        "failure": null
+      },
+      {
+        "openingId": "9ca7af85ef3b931ce8617c742db73e1cfa627e037f242bead1860b22bdf64ef1",
+        "aColor": "white",
+        "scoreA": 0,
+        "status": "black_win",
+        "plies": 55,
+        "failure": null
+      },
+      {
+        "openingId": "e55e3111de16132918dd0b6bfd67545fc88e383fd27adf43f8fd06d67562c4bd",
+        "aColor": "black",
+        "scoreA": 0,
+        "status": "white_win",
+        "plies": 72,
+        "failure": null
+      },
+      {
+        "openingId": "e55e3111de16132918dd0b6bfd67545fc88e383fd27adf43f8fd06d67562c4bd",
+        "aColor": "white",
+        "scoreA": 0,
+        "status": "black_win",
+        "plies": 31,
+        "failure": null
+      },
+      {
+        "openingId": "5294a29bbb5add0fb22279288a684656e9e7514d6a55024111b49cfd6136df2d",
+        "aColor": "black",
+        "scoreA": 0.5,
+        "status": "draw",
+        "plies": 225,
+        "failure": null
+      },
+      {
+        "openingId": "5294a29bbb5add0fb22279288a684656e9e7514d6a55024111b49cfd6136df2d",
+        "aColor": "white",
+        "scoreA": 0,
+        "status": "black_win",
+        "plies": 63,
+        "failure": null
+      },
+      {
+        "openingId": "db58b9e5f32e409a13e33d8257425b3feea4fa9de64edef19fd2e55e60d026bb",
+        "aColor": "black",
+        "scoreA": 0,
+        "status": "white_win",
+        "plies": 24,
+        "failure": null
+      },
+      {
+        "openingId": "db58b9e5f32e409a13e33d8257425b3feea4fa9de64edef19fd2e55e60d026bb",
+        "aColor": "white",
+        "scoreA": 0,
+        "status": "black_win",
+        "plies": 29,
+        "failure": null
+      },
+      {
+        "openingId": "3949a206a18393d5e92ea118108cab57a5680e03b54cb7222d2296efc125ac6d",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 83,
+        "failure": null
+      },
+      {
+        "openingId": "3949a206a18393d5e92ea118108cab57a5680e03b54cb7222d2296efc125ac6d",
+        "aColor": "white",
+        "scoreA": 1,
+        "status": "white_win",
+        "plies": 44,
+        "failure": null
+      },
+      {
+        "openingId": "d1b87450cd243779c4c2afa6b2201eec11c76fd70009d2c63ec485f7b7e592ae",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 65,
+        "failure": null
+      },
+      {
+        "openingId": "d1b87450cd243779c4c2afa6b2201eec11c76fd70009d2c63ec485f7b7e592ae",
+        "aColor": "white",
+        "scoreA": 0,
+        "status": "black_win",
+        "plies": 29,
+        "failure": null
+      }
+    ],
+    "fullRecord": {
+      "path": "artifacts/arena/mate-v2-vs-v1.json",
+      "sha256": "3a12a98cfaec05c2e5ebc6d45c61aa97f1239ecc44b03a50202593d10c6aedf1"
+    }
+  },
+  "searchArena": {
+    "engines": {
+      "a": {
+        "executable": {
+          "path": "D:\\Projects\\Gomoku\\build\\dev\\bin\\gomoku-worker.exe",
+          "sha256": "f722151dac9ec4854266106cee8d23cadf8015095f33703cc92d6cb77e7449e1"
+        },
+        "model": {
+          "path": "D:\\Projects\\Gomoku\\artifacts\\models\\rapfi-calibrated-v1\\weights.gnn",
+          "sha256": "4ddd79cd821a2814c5a2cb762b52d5853ba03bc5e613f3d6c5e5344a6acd3e3a"
+        }
+      },
+      "b": {
+        "executable": {
+          "path": "D:\\Projects\\Gomoku\\artifacts\\baselines\\pre-vcf\\gomoku-worker.exe",
+          "sha256": "a53c2744e53b41d239266c1924097cd3df64d80edec0adc33ceaeb7d17786c32"
+        },
+        "model": {
+          "path": "D:\\Projects\\Gomoku\\artifacts\\models\\rapfi-calibrated-v1\\weights.gnn",
+          "sha256": "4ddd79cd821a2814c5a2cb762b52d5853ba03bc5e613f3d6c5e5344a6acd3e3a"
+        }
+      }
+    },
+    "limits": {
+      "timeMs": 300,
+      "maxDepth": 8
+    },
+    "summary": {
+      "games": 16,
+      "scoreA": 15,
+      "winsA": 15,
+      "draws": 0,
+      "winsB": 1,
+      "failures": 0
+    },
+    "openingPairs": 8,
+    "pairScoresA": [2, 1, 2, 2, 2, 2, 2, 2],
+    "games": [
+      {
+        "openingId": "483f8a2a81473050643cd0e373d374d11b03440e96505b4a807ae11618d2f8a9",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 35,
+        "failure": null
+      },
+      {
+        "openingId": "483f8a2a81473050643cd0e373d374d11b03440e96505b4a807ae11618d2f8a9",
+        "aColor": "white",
+        "scoreA": 1,
+        "status": "white_win",
+        "plies": 26,
+        "failure": null
+      },
+      {
+        "openingId": "4e17d5955199378d95dbb5d6f45b8733d8253fb2792a5caff279c34343a4f004",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 31,
+        "failure": null
+      },
+      {
+        "openingId": "4e17d5955199378d95dbb5d6f45b8733d8253fb2792a5caff279c34343a4f004",
+        "aColor": "white",
+        "scoreA": 0,
+        "status": "black_win",
+        "plies": 45,
+        "failure": null
+      },
+      {
+        "openingId": "9ca7af85ef3b931ce8617c742db73e1cfa627e037f242bead1860b22bdf64ef1",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 23,
+        "failure": null
+      },
+      {
+        "openingId": "9ca7af85ef3b931ce8617c742db73e1cfa627e037f242bead1860b22bdf64ef1",
+        "aColor": "white",
+        "scoreA": 1,
+        "status": "white_win",
+        "plies": 32,
+        "failure": null
+      },
+      {
+        "openingId": "e55e3111de16132918dd0b6bfd67545fc88e383fd27adf43f8fd06d67562c4bd",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 25,
+        "failure": null
+      },
+      {
+        "openingId": "e55e3111de16132918dd0b6bfd67545fc88e383fd27adf43f8fd06d67562c4bd",
+        "aColor": "white",
+        "scoreA": 1,
+        "status": "white_win",
+        "plies": 22,
+        "failure": null
+      },
+      {
+        "openingId": "5294a29bbb5add0fb22279288a684656e9e7514d6a55024111b49cfd6136df2d",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 27,
+        "failure": null
+      },
+      {
+        "openingId": "5294a29bbb5add0fb22279288a684656e9e7514d6a55024111b49cfd6136df2d",
+        "aColor": "white",
+        "scoreA": 1,
+        "status": "white_win",
+        "plies": 20,
+        "failure": null
+      },
+      {
+        "openingId": "db58b9e5f32e409a13e33d8257425b3feea4fa9de64edef19fd2e55e60d026bb",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 33,
+        "failure": null
+      },
+      {
+        "openingId": "db58b9e5f32e409a13e33d8257425b3feea4fa9de64edef19fd2e55e60d026bb",
+        "aColor": "white",
+        "scoreA": 1,
+        "status": "white_win",
+        "plies": 24,
+        "failure": null
+      },
+      {
+        "openingId": "3949a206a18393d5e92ea118108cab57a5680e03b54cb7222d2296efc125ac6d",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 59,
+        "failure": null
+      },
+      {
+        "openingId": "3949a206a18393d5e92ea118108cab57a5680e03b54cb7222d2296efc125ac6d",
+        "aColor": "white",
+        "scoreA": 1,
+        "status": "white_win",
+        "plies": 24,
+        "failure": null
+      },
+      {
+        "openingId": "d1b87450cd243779c4c2afa6b2201eec11c76fd70009d2c63ec485f7b7e592ae",
+        "aColor": "black",
+        "scoreA": 1,
+        "status": "black_win",
+        "plies": 27,
+        "failure": null
+      },
+      {
+        "openingId": "d1b87450cd243779c4c2afa6b2201eec11c76fd70009d2c63ec485f7b7e592ae",
+        "aColor": "white",
+        "scoreA": 1,
+        "status": "white_win",
+        "plies": 76,
+        "failure": null
+      }
+    ],
+    "fullRecord": {
+      "path": "artifacts/arena/vcf-vs-before.json",
+      "sha256": "359711a0d27a5996fca8c18a28434a5fb18a41030a7717edcec2a7e40b5cd72e"
+    }
+  },
+  "userRecordWasm": {
+    "timeMs": 3000,
+    "positions": [
+      {
+        "variant": "before",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 21,
+        "maxDepth": 8,
+        "bestMove": "M10",
+        "depth": 6,
+        "elapsedMs": 3000,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 78810,
+        "pv": ["M10", "M8", "J12", "J11", "K10", "G5"],
+        "reason": "limit",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": -28
+        }
+      },
+      {
+        "variant": "before",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 23,
+        "maxDepth": 8,
+        "bestMove": "M10",
+        "depth": 6,
+        "elapsedMs": 3000,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 78523,
+        "pv": ["M10", "G10", "E8", "J5", "E10", "K5"],
+        "reason": "limit",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": -32
+        }
+      },
+      {
+        "variant": "before",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 24,
+        "maxDepth": 1,
+        "bestMove": "G10",
+        "depth": 1,
+        "elapsedMs": 1,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 16,
+        "pv": ["G10"],
+        "reason": "completed",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": 32
+        }
+      },
+      {
+        "variant": "before",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 25,
+        "maxDepth": 8,
+        "bestMove": "J5",
+        "depth": 8,
+        "elapsedMs": 859,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 30016,
+        "pv": ["J5", "H11", "H4", "K13"],
+        "reason": "completed",
+        "score": {
+          "kind": "mate",
+          "perspective": "side_to_move",
+          "value": -99996
+        }
+      },
+      {
+        "variant": "vcf",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 21,
+        "maxDepth": 8,
+        "bestMove": "M10",
+        "depth": 7,
+        "elapsedMs": 3000,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 2107300,
+        "pv": ["M10", "E10", "H7", "M8", "G6", "F5", "K12"],
+        "reason": "limit",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": -25
+        }
+      },
+      {
+        "variant": "vcf",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 23,
+        "maxDepth": 8,
+        "bestMove": "H6",
+        "depth": 8,
+        "elapsedMs": 2990,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 2092830,
+        "pv": ["H6", "K11", "M9", "M12", "K12", "G10", "H11", "M10", "N11"],
+        "reason": "completed",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": -38
+        }
+      },
+      {
+        "variant": "vcf",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 24,
+        "maxDepth": 1,
+        "bestMove": "G10",
+        "depth": 1,
+        "elapsedMs": 0,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 1,
+        "pv": ["G10"],
+        "reason": "completed",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": 32
+        }
+      },
+      {
+        "variant": "vcf",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 25,
+        "maxDepth": 8,
+        "bestMove": "E8",
+        "depth": 7,
+        "elapsedMs": 3000,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 2424808,
+        "pv": ["E8", "M10", "N11", "H6"],
+        "reason": "limit",
+        "score": {
+          "kind": "mate",
+          "perspective": "side_to_move",
+          "value": -99996
+        }
+      },
+      {
+        "variant": "vcf-mate",
+        "model": "rapfi-mate-v2",
+        "afterPly": 21,
+        "maxDepth": 8,
+        "bestMove": "H6",
+        "depth": 7,
+        "elapsedMs": 3000,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 1948194,
+        "pv": ["H6", "J5", "M10", "H7", "E10", "F11", "F6"],
+        "reason": "limit",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": -26
+        }
+      },
+      {
+        "variant": "vcf-mate",
+        "model": "rapfi-mate-v2",
+        "afterPly": 23,
+        "maxDepth": 8,
+        "bestMove": "H6",
+        "depth": 7,
+        "elapsedMs": 3000,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 2094826,
+        "pv": ["H6", "K11", "M9", "G10", "H11", "J5", "G6"],
+        "reason": "limit",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": -41
+        }
+      },
+      {
+        "variant": "vcf-mate",
+        "model": "rapfi-mate-v2",
+        "afterPly": 24,
+        "maxDepth": 1,
+        "bestMove": "G10",
+        "depth": 1,
+        "elapsedMs": 0,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 1,
+        "pv": ["G10"],
+        "reason": "completed",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": 35
+        }
+      },
+      {
+        "variant": "vcf-mate",
+        "model": "rapfi-mate-v2",
+        "afterPly": 25,
+        "maxDepth": 8,
+        "bestMove": "E8",
+        "depth": 7,
+        "elapsedMs": 3000,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 2388699,
+        "pv": ["E8", "M10", "N11", "H6"],
+        "reason": "limit",
+        "score": {
+          "kind": "mate",
+          "perspective": "side_to_move",
+          "value": -99996
+        }
+      }
+    ]
+  },
+  "userRecordFixedDepthWasm": {
+    "timeMs": 3000,
+    "fixedDepth": true,
+    "positions": [
+      {
+        "variant": "before",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 24,
+        "maxDepth": 2,
+        "bestMove": "G10",
+        "depth": 2,
+        "elapsedMs": 8,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 68,
+        "pv": ["G10", "J5"],
+        "reason": "completed",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": 15
+        }
+      },
+      {
+        "variant": "before",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 25,
+        "maxDepth": 1,
+        "bestMove": "J5",
+        "depth": 1,
+        "elapsedMs": 1,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 21,
+        "pv": ["J5"],
+        "reason": "completed",
+        "score": {
+          "kind": "heuristic",
+          "perspective": "side_to_move",
+          "value": -15
+        }
+      },
+      {
+        "variant": "vcf",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 24,
+        "maxDepth": 2,
+        "bestMove": "G10",
+        "depth": 2,
+        "elapsedMs": 5,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 157,
+        "pv": ["G10", "E8", "K13", "H11", "M10", "N11", "H6"],
+        "reason": "completed",
+        "score": {
+          "kind": "mate",
+          "perspective": "side_to_move",
+          "value": 99993
+        }
+      },
+      {
+        "variant": "vcf",
+        "model": "rapfi-calibrated-v1",
+        "afterPly": 25,
+        "maxDepth": 1,
+        "bestMove": "E8",
+        "depth": 1,
+        "elapsedMs": 1,
+        "evaluator": "line11-nnue-v1",
+        "kind": "analysis",
+        "nodes": 155,
+        "pv": ["E8", "K13", "H11", "M10", "N11", "H6"],
+        "reason": "completed",
+        "score": {
+          "kind": "mate",
+          "perspective": "side_to_move",
+          "value": -99994
+        }
+      }
+    ]
+  },
+  "promotion": {
+    "promoted": false,
+    "retainedWebModel": "rapfi-calibrated-v1",
+    "reason": "Same-engine paired arena: candidate 5 wins, 2 draws, 9 losses. No demonstrated playing-strength improvement; keep candidate for research."
+  }
+}

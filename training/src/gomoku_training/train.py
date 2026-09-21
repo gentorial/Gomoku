@@ -23,7 +23,7 @@ from .device import (
 )
 from .config import digest, load_config
 from .io import atomic_write, file_sha256, write_json
-from .loss import loss_terms, summarize
+from .loss import effective_labels, loss_terms, summarize
 from .model import LineNNUE
 from .shards import BlockSampler, ShardDataset, decode_batch
 
@@ -277,15 +277,7 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
                     optimizer.zero_grad(set_to_none=True)
                     for group in optimizer.param_groups:
                         group["lr"] = learning_rate(step, config.run)
-                    has_teacher = torch.isfinite(batch["teacher_wdl"]).all(1) | (
-                        (batch["score_kind"] == 1)
-                        & torch.isfinite(batch["teacher_score"])
-                    )
-                    effective = (
-                        (has_teacher & (config.loss.teacher_weight > 0))
-                        | ((batch["result"] >= 0) & (config.loss.result_weight > 0))
-                        | ((batch["policy_kind"] > 0) & (config.loss.policy_weight > 0))
-                    ).sum()
+                    effective = effective_labels(batch, config.loss).sum()
                     if not effective:
                         raise RuntimeError("Batch has no effective labels")
                     metrics = {}

@@ -39,7 +39,7 @@ void validate_pv(Position position, CheckedEvaluator& evaluator, const SearchRes
         position.play(move);
         ++ply;
     }
-    require(position.terminal() || ply == result.depth, "completed PV must reach the requested depth");
+    require(position.terminal() || ply >= result.depth, "completed PV must reach the requested depth (plus forced replies)");
     evaluator.reset(position);
     const int value = position.winner() != Color::empty ? -100000 + ply :
         position.full() ? 0 : evaluator.evaluate(position);

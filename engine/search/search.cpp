@@ -1,5 +1,6 @@
 #include "gomoku/search.h"
 #include "gomoku/profile.h"
+#include "gomoku/vcf.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -32,8 +33,13 @@ int from_table(int score, int ply) {
 }
 struct Played {
     Position& position;
-    Played(Position& p, Move move) : position(p) { position.play(move); }
-    ~Played() { position.undo(); }
+    Threats* threats;
+    Move move;
+    Played(Position& p, Move m, Threats* t = nullptr) : position(p), threats(t), move(m) {
+        const auto color = p.turn(); position.play(move);
+        if (threats) threats->play(move, color);
+    }
+    ~Played() { if (threats) threats->undo(move); position.undo(); }
     Played(const Played&) = delete;
 };
 struct Accumulated {
@@ -52,10 +58,14 @@ struct Search {
     std::uint64_t nodes = 0;
     SearchStats stats;
     std::vector<Entry> table;
+    std::optional<Threats> threats;
 
-    Search(Evaluator& e, const SearchLimits& l, const std::atomic_bool& c, const SearchOptions& o)
+    Search(Evaluator& e, const SearchLimits& l, const std::atomic_bool& c, const SearchOptions& o, const Position& root)
         : evaluator(e), limits(l), cancelled(c), options(o),
-          table(o.transpositions ? o.table_entries : 0) {}
+          table(o.transpositions ? o.table_entries : 0) {
+        if (o.vcf) threats.emplace(root);
+    }
+    Threats* tactics() { return threats ? &*threats : nullptr; }
     int elapsed() const {
         return static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start).count());
     }
@@ -80,6 +90,11 @@ struct Search {
             static_cast<std::uint8_t>(depth), bound};
     }
     std::vector<Move> ordered(const Position& position) {
+        if (threats) {
+            if (threats->winning_count(position.turn())) return threats->winning_moves(position.turn());
+            if (threats->winning_count(opposite(position.turn())))
+                return threats->winning_moves(opposite(position.turn()));
+        }
         struct Ranked { Move move; int priority; double policy; int heuristic; std::size_t ordinal; };
         std::vector<Ranked> ranked;
         const auto candidates = position.candidates();
@@ -152,6 +167,33 @@ struct Search {
         pv.clear();
         if (position.winner() != Color::empty) return -mate + ply;
         if (position.full()) return 0;
+        bool forced = false;
+        if (threats) {
+            const auto side = position.turn(), other = opposite(side);
+            if (threats->winning_count(side)) {
+                pv = {threats->winning_moves(side).front()};
+                return mate - ply - 1;
+            }
+            const int danger = threats->winning_count(other);
+            if (danger >= 2) {
+                const auto points = threats->winning_moves(other);
+                pv = {points[0], points[1]};
+                return -mate + ply + 2;
+            }
+            forced = danger == 1;
+            if (depth == 0 && !forced && threats->four_count(side)) {
+                const auto proof = solve_vcf(position, *threats,
+                    {options.vcf_max_plies, options.vcf_node_limit}, [&] {
+                        check(); ++nodes; ++stats.vcf_nodes;
+                    });
+                if (proof.status == VcfStatus::win) {
+                    ++stats.vcf_wins;
+                    pv = proof.pv;
+                    return mate - ply - static_cast<int>(pv.size());
+                }
+                stats.vcf_unknown += proof.status == VcfStatus::unknown;
+            }
+        }
         std::optional<Move> preferred;
         if (const auto* entry = probe(position.hash())) {
             if (entry->move >= 0) {
@@ -159,9 +201,9 @@ struct Search {
                 if (position.legal(move)) preferred = move;
             }
             const int value = from_table(entry->score, ply);
-            // Full-window interior nodes construct an uninterrupted PV. Null
-            // windows (and leaves) can return bounds without touching NNUE.
-            if (entry->depth >= depth && (depth == 0 || beta-alpha == 1) &&
+            // Forced replies can extend a nominal leaf. Preserve their PV in
+            // full windows; quiet leaves and null windows can return bounds.
+            if (entry->depth >= depth && ((depth == 0 && !forced) || beta-alpha == 1) &&
                 (entry->bound == Bound::exact || (entry->bound == Bound::lower && value >= beta) ||
                  (entry->bound == Bound::upper && value <= alpha))) {
                 ++stats.tt_cutoffs;
@@ -172,7 +214,7 @@ struct Search {
         // and TT cutoffs do not pay for a convolution update or its undo frame.
         Accumulated accumulated(evaluator, position, last_move);
         ++stats.evaluator_pushes;
-        if (depth == 0) {
+        if (depth == 0 && !forced) {
             const int value = evaluator.evaluate(position);
             store(position.hash(), 0, value, Bound::exact, {}, ply);
             return value;
@@ -186,14 +228,15 @@ struct Search {
             std::vector<Move> child;
             int value;
             {
-                Played played(position, *move);
+                Played played(position, *move, tactics());
+                const int child_depth = std::max(depth-1, 0);
                 if (options.pvs && searched > 0) {
-                    value = -negamax(position, depth-1, -alpha-1, -alpha, ply+1, *move, child);
+                    value = -negamax(position, child_depth, -alpha-1, -alpha, ply+1, *move, child);
                     if (value > alpha && value < beta) {
                         ++stats.pvs_researches;
-                        value = -negamax(position, depth-1, -beta, -alpha, ply+1, *move, child);
+                        value = -negamax(position, child_depth, -beta, -alpha, ply+1, *move, child);
                     }
-                } else value = -negamax(position, depth-1, -beta, -alpha, ply+1, *move, child);
+                } else value = -negamax(position, child_depth, -beta, -alpha, ply+1, *move, child);
             }
             ++searched;
             if (value > best) {
@@ -222,7 +265,9 @@ SearchResult search(const Position& root, Evaluator& evaluator, const SearchLimi
         throw std::invalid_argument("Invalid search limits");
     if (options.transpositions && (!std::has_single_bit(options.table_entries) || options.table_entries > (1 << 18)))
         throw std::invalid_argument("TT entries must be a power of two up to 262144");
-    Search searcher(evaluator, limits, cancelled, options);
+    if (options.vcf_max_plies < 1 || options.vcf_max_plies > 400)
+        throw std::invalid_argument("Invalid VCF depth");
+    Search searcher(evaluator, limits, cancelled, options, root);
     SearchResult result;
     evaluator.reset(root);
     if (root.terminal()) {
@@ -256,7 +301,7 @@ SearchResult search(const Position& root, Evaluator& evaluator, const SearchLimi
                 std::vector<Move> child;
                 int value;
                 {
-                    Played played(position, *move);
+                    Played played(position, *move, searcher.tactics());
                     if (options.pvs && searched > 0) {
                         value = -searcher.negamax(position, depth-1, -alpha-1, -alpha, 1, *move, child);
                         if (value > alpha) {
