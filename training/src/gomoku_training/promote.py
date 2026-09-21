@@ -18,9 +18,18 @@ from .io import file_sha256, read_json, write_json
 
 
 def command(*args, capture=False):
-    return subprocess.run(list(map(str, args)), cwd=ROOT, check=True, text=True,
-                          capture_output=capture, encoding="utf-8",
-                          creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    # Hidden Windows children need explicit output handles. Inheriting the
+    # background campaign's handles can make Git fail without visible diagnostics.
+    result = subprocess.run(list(map(str, args)), cwd=ROOT, text=True,
+                            capture_output=True, encoding="utf-8",
+                            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    if not capture or result.returncode:
+        if result.stdout:
+            print(result.stdout, end="", flush=True)
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr, flush=True)
+    result.check_returncode()
+    return result
 
 
 def decision(root):
