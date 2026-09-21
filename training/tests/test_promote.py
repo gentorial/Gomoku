@@ -29,6 +29,15 @@ class PublicationCommandTests(unittest.TestCase):
         self.assertEqual(caught.exception.stderr, "push failed\n")
         self.assertEqual(err.getvalue(), "push failed\n")
 
+    def test_unicode_build_output_does_not_fail_on_legacy_windows_console(self):
+        data = io.BytesIO()
+        stream = io.TextIOWrapper(data, encoding="gbk")
+        with redirect_stdout(stream):
+            result = command(sys.executable, "-c", "import sys; sys.stdout.buffer.write('\\u2713'.encode('utf-8'))")
+        self.assertEqual(result.stdout, "\u2713")
+        self.assertEqual(data.getvalue(), b"\\u2713")
+        stream.close()
+
 
 if __name__ == "__main__":
     unittest.main()

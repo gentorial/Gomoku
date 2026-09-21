@@ -24,10 +24,12 @@ def command(*args, capture=False):
                             capture_output=True, encoding="utf-8",
                             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
     if not capture or result.returncode:
-        if result.stdout:
-            print(result.stdout, end="", flush=True)
-        if result.stderr:
-            print(result.stderr, end="", file=sys.stderr, flush=True)
+        for output, stream in ((result.stdout, sys.stdout), (result.stderr, sys.stderr)):
+            if output:
+                encoding = getattr(stream, "encoding", None)
+                if encoding:
+                    output = output.encode(encoding, errors="backslashreplace").decode(encoding)
+                print(output, end="", file=stream, flush=True)
     result.check_returncode()
     return result
 
