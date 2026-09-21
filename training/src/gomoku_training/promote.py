@@ -5,6 +5,7 @@ checks the exact arena/model/reference hashes and refuses to replace a newer pin
 """
 
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shutil
@@ -72,8 +73,15 @@ def promote(root, *, publish=False, push=False):
     assessment.update(runtimeCompatible=True, hasMeasuredPlayingStrength=True, promotion=manifest["promotion"])
     write_json(assessment_path, assessment)
     result.update(published=False)
-    if not result["passed"] or not publish:
+    def record_publication():
         write_json(root / "publication.json", result)
+        status = read_json(root / "status.json")
+        status.update(modelPromoted=result["published"], publication=result,
+                      updatedAt=datetime.now(timezone.utc).isoformat())
+        write_json(root / "status.json", status)
+
+    if not result["passed"] or not publish:
+        record_publication()
         return result
     checksum = result["selection"]["export"]["sha256"]
     identifier = "rapfi-v3-" + checksum[:12]
@@ -138,7 +146,7 @@ def promote(root, *, publish=False, push=False):
             command("git", "commit", "--only", "-m", "Promote arena-validated NNUE v3 for the browser", "--", *paths)
         command("git", "push", "origin", "HEAD")
     result.update(published=True, pushed=push, modelId=identifier, release=f"{repo['url']}/releases/tag/{tag}")
-    write_json(root / "publication.json", result)
+    record_publication()
     return result
 
 
@@ -159,7 +167,12 @@ def main():
             if status["stage"] in ("failed", "interrupted"):
                 parser.exit(2, "Campaign stopped before publication; resume it first.\n")
             time.sleep(15)
-    print(json.dumps(promote(args.campaign, publish=args.publish, push=args.push), indent=2))
+    try:
+        result = promote(args.campaign, publish=args.publish, push=args.push)
+    except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
+        write_json(args.campaign / "publication-error.json", {"error": str(error)})
+        parser.exit(2, f"Publication failed: {error}\n")
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
