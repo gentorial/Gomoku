@@ -9,12 +9,14 @@ from .shards import ShardDataset
 from .train import load_checkpoint, validate_model
 
 
-def evaluate(checkpoint, manifest, split="test", device="auto", *, loss_config=None):
+def evaluate(checkpoint, manifest, split="test", device="auto", *, loss_config=None, precision=None):
     state = load_checkpoint(checkpoint)
     config = from_dict(state["config"])
     if loss_config is not None:
         config = replace(config, loss=loss_config)
-        config.validate()
+    if precision is not None:
+        config = replace(config, run=replace(config.run, precision=precision))
+    config.validate()
     device = resolve_device(device)
     torch.set_num_threads(config.run.cpu_threads)
     dataset = ShardDataset(manifest, split)
@@ -39,6 +41,7 @@ def evaluate(checkpoint, manifest, split="test", device="auto", *, loss_config=N
             "datasetSha256": dataset.digest,
             "checkpointStep": state["step"],
             "device": device.type,
+            "precision": config.run.precision,
             **validate_model(model, dataset, config, device),
         }
     finally:

@@ -99,6 +99,7 @@ def assess(
         "teachers": data.get("teachers", []),
         "exportBytes": exported["bytes"],
         "comparisonLossConfig": asdict(comparison_loss),
+        "comparisonPrecision": "fp32",
         "baseline": {},
         "selected": {},
         "hasMeasuredPlayingStrength": False,
@@ -107,7 +108,7 @@ def assess(
     for label, path in (("baseline", baseline), ("selected", checkpoint)):
         for split in ("validation", "test"):
             metrics = evaluate(
-                path, manifest, split, device, loss_config=comparison_loss
+                path, manifest, split, device, loss_config=comparison_loss, precision="fp32"
             )
             result[label][split] = metrics
             print(
