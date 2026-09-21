@@ -48,6 +48,9 @@ def load_checkpoint(path):
 
 def compatibility(config, dataset_digest):
     value = config.to_dict()
+    # Preserve the pre-v3 resume fingerprint for unchanged legacy objectives.
+    if value["loss"]["value_target"] == "legacy":
+        value["loss"].pop("value_target")
     value["data"].pop("manifest")
     for name in ("output", "device", "cpu_threads"):
         value["run"].pop(name)

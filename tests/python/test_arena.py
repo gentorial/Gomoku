@@ -28,6 +28,19 @@ class ArenaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             worker_match(binary(), binary(), [{"id": "bad", "moves": [{"x": 7, "y": 7}] * 2}])
 
+    def test_resume_only_plays_the_missing_color(self):
+        fixture = json.loads((ROOT / "tests/fixtures/winning-move.json").read_text())
+        openings = [{"id": "win", "moves": fixture["position"]["moves"]}]
+        games = worker_match(binary(), binary(), openings, time_ms=100)
+        updates = []
+        resumed = worker_match(binary(), binary(), openings, time_ms=100,
+                               completed=games[:1], on_game=lambda r: updates.append(len(r)))
+        self.assertEqual(updates, [2])
+        self.assertEqual([g["aColor"] for g in resumed], ["black", "white"])
+        self.assertEqual(resumed[0], games[0])
+        with self.assertRaises(ValueError):
+            worker_match(binary(), binary(), openings, completed=games[1:])
+
 
 if __name__ == "__main__":
     unittest.main()

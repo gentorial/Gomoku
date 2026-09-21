@@ -20,10 +20,10 @@ def binary(name="gomoku-worker"):
 
 
 class EngineProcess:
-    def __init__(self, executable, arguments=()):
+    def __init__(self, executable, arguments=(), *, cwd=None):
         self.process = subprocess.Popen(
             [str(executable), *map(str, arguments)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, text=True, encoding="utf-8", bufsize=1,
+            stderr=subprocess.PIPE, text=True, encoding="utf-8", bufsize=1, cwd=cwd,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         self.messages = queue.Queue()

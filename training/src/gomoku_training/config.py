@@ -57,6 +57,7 @@ class DataConfig:
 
 @dataclass(frozen=True)
 class LossConfig:
+    value_target: str = "legacy"
     teacher_weight: float = 0.75
     result_weight: float = 0.25
     policy_weight: float = 1.0
@@ -120,8 +121,10 @@ class Config:
             raise ValueError("device must be auto, cpu, xpu or cuda")
         if self.run.precision not in ("fp32", "bf16"):
             raise ValueError("precision must be fp32 or bf16")
+        if self.loss.value_target not in ("legacy", "expected_score"):
+            raise ValueError("value_target must be legacy or expected_score")
         for name, value in {
-            **asdict(self.loss),
+            **{k: v for k, v in asdict(self.loss).items() if k != "value_target"},
             "learning_rate": self.run.learning_rate,
             "weight_decay": self.run.weight_decay,
             "min_lr_ratio": self.run.min_lr_ratio,

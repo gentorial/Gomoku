@@ -5,6 +5,7 @@ Passes, unknown tags, and unsupported rules are rejected, never guessed.
 """
 
 import hashlib
+import math
 from pathlib import Path
 import struct
 
@@ -124,7 +125,48 @@ def opening_key(moves, size, rule, plies=6):
     ).hexdigest()
 
 
-def annotated_game(game, worker, teacher, source):
+def multipv_policy(candidates, temperature=200.0):
+    """A score-derived target, never a fabricated visit-count distribution."""
+    if not math.isfinite(temperature) or temperature <= 0:
+        raise ValueError("Policy temperature must be positive and finite")
+    scored = [item for item in candidates if item["eval"] is not None]
+    winners = [item for item in scored if item["eval"] >= MATE_THRESHOLD]
+    ordinary = [item for item in scored if abs(item["eval"]) < MATE_THRESHOLD]
+    selected = winners or ordinary
+    if len(candidates) == 1 or not selected or candidates[0] not in selected:
+        return {"kind": "best_move", "moves": [candidates[0]["move"]]}
+    best = max(item["eval"] for item in selected)
+    weights = [1.0 if winners else math.exp(max(-20.0, (item["eval"]-best)/temperature))
+               for item in selected]
+    total = sum(weights)
+    return {"kind": "derived_distribution",
+            "transform": {"name": "rapfi-multipv-score-softmax-v1", "temperature": temperature,
+                          "matePolicy": "uniform-proven-wins; otherwise ordinary-only; losing-mates best-move"},
+            "moves": [{**item["move"], "probability": weight/total}
+                      for item, weight in zip(selected, weights)]}
+
+
+def sampled_indices(game, limit):
+    """Deterministic coverage of game phases, plus changes of tactical status."""
+    turns = game["turns"]
+    if not limit or len(turns) <= limit:
+        return range(len(turns))
+    # Keep an even spread; reserve a quarter for transitions to/from mate.
+    transitions = []
+    for i in range(1, len(turns)):
+        before, after = turns[i-1][0]["eval"], turns[i][0]["eval"]
+        if before is not None and after is not None and (
+            (abs(before) >= MATE_THRESHOLD) != (abs(after) >= MATE_THRESHOLD)
+        ):
+            transitions.extend(range(max(0, i-2), min(len(turns), i+2)))
+    selected = set(sorted(set(transitions))[:limit//4])
+    remaining = limit-len(selected)
+    available = [i for i in range(len(turns)) if i not in selected]
+    selected.update(available[(i*(len(available)-1))//max(remaining-1, 1)] for i in range(remaining))
+    return sorted(selected)
+
+
+def annotated_game(game, worker, teacher, source, samples_per_game=0, policy_temperature=200.0):
     """Only native-verified terminal outcomes become result supervision."""
     moves = game["opening"] + [turn[0]["move"] for turn in game["turns"]]
     position = {"size": game["size"], "rule": game["rule"], "moves": moves}
@@ -138,7 +180,8 @@ def annotated_game(game, worker, teacher, source):
         raise ValueError("Teacher result disagrees with native rules")
     opening = opening_key(moves, game["size"], game["rule"])
     records = []
-    for i, candidates in enumerate(game["turns"]):
+    for i in sampled_indices(game, samples_per_game):
+        candidates = game["turns"][i]
         ply = len(game["opening"]) + i
         score = candidates[0]["eval"]
         label = {**teacher, "perspective": "side_to_move"}
@@ -155,7 +198,7 @@ def annotated_game(game, worker, teacher, source):
                 "position": {**position, "moves": moves[:ply]},
                 "result": result,
                 "teacher": label,
-                "policy": {"kind": "best_move", "moves": [candidates[0]["move"]]},
+                "policy": multipv_policy(candidates, policy_temperature),
                 "source": {
                     **source,
                     "format": FORMAT,

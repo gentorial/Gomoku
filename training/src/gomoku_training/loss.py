@@ -38,6 +38,16 @@ def loss_terms(prediction, batch, config):
     teacher_mse = (prob[:, 0] - prob[:, 2] - scalar).square()
     teacher_mask = wdl_mask | scalar_mask | mate_mask
     teacher_loss = torch.where(wdl_mask, teacher_ce, torch.where(mate_mask, mate_ce, teacher_mse))
+    expected = prob[:, 0] - prob[:, 2]
+    mate_mse = (expected - batch["teacher_score"].nan_to_num(0).sign()).square()
+    if config.value_target == "expected_score":
+        # One value scale for all labels. A teacher mate must not be diluted by
+        # mistakes later in the recorded game. Legacy checkpoints stay readable.
+        wdl = batch["teacher_wdl"].nan_to_num(0)
+        wdl_mse = (expected - (wdl[:, 0] - wdl[:, 2])).square()
+        teacher_loss = torch.where(wdl_mask, wdl_mse, torch.where(mate_mask, mate_mse, teacher_mse))
+        result_loss = (expected - (1 - batch["result"].float())).square()
+        result_mask = result_mask & ~(mate_mask & (config.teacher_weight > 0))
     weight = config.teacher_weight * teacher_mask + config.result_weight * result_mask
     value_loss = (
         config.teacher_weight * teacher_mask * teacher_loss
@@ -53,8 +63,21 @@ def loss_terms(prediction, batch, config):
     )
     effective = effective_labels(batch, config)
     loss = per_sample.sum() / effective.sum().clamp_min(1)
-    policy_target = batch["policy"].argmax(1)
+    policy_target = batch.get("policy_best", batch["policy"].argmax(1))
     top_moves = prediction["policy"].detach().topk(5, dim=1).indices
+    # The quiet search retains the first 16 points within distance two. Measure
+    # coverage of that actual geometric pool, not just global top-1 agreement.
+    candidate_correct = torch.zeros_like(policy_mask)
+    candidate_count = torch.zeros_like(policy_mask)
+    if "boards" in batch:
+        occupied = (batch["boards"] != 0)
+        near = F.max_pool2d(occupied.float().unsqueeze(1), 5, 1, 2).squeeze(1) > 0
+        candidates = (near & ~occupied).flatten(1)
+        center = batch["boards"].shape[-1]//2
+        candidates[:, center*batch["boards"].shape[-1]+center] |= ~occupied.flatten(1).any(1)
+        candidate_count = policy_mask & candidates.gather(1, policy_target[:, None]).squeeze(1)
+        ranked = prediction["policy"].detach().masked_fill(~candidates, -float("inf")).topk(16, dim=1).indices
+        candidate_correct = (ranked == policy_target[:, None]).any(1) & candidate_count
     return loss, {
         "lossSum": per_sample.detach().sum(),
         "effective": effective.sum(),
@@ -68,6 +91,9 @@ def loss_terms(prediction, batch, config):
         "teacherMateCount": mate_mask.sum(),
         "teacherMateLossSum": (mate_ce.detach() * mate_mask).sum(),
         "teacherMateCorrect": ((logits.argmax(1) == mate_target) & mate_mask).sum(),
+        "teacherMateSquaredError": (mate_mse.detach() * mate_mask).sum(),
+        "policyCandidateEligible": candidate_count.sum(),
+        "policyCandidateTop16Correct": candidate_correct.sum(),
         "policyCorrect": ((top_moves[:, 0] == policy_target) & policy_mask).sum(),
         "policyTop5Correct": (
             (top_moves == policy_target[:, None]).any(1) & policy_mask
@@ -97,6 +123,10 @@ def summarize(metrics):
         if metrics["teacherMateCount"] else None,
         "teacherMateAccuracy": metrics["teacherMateCorrect"] / metrics["teacherMateCount"]
         if metrics["teacherMateCount"] else None,
+        "teacherMateMse": metrics["teacherMateSquaredError"] / metrics["teacherMateCount"]
+        if metrics["teacherMateCount"] else None,
+        "policyCandidateEligibility": metrics["policyCandidateEligible"] / max(metrics["policyCount"], 1),
+        "policyCandidateTop16Recall": metrics["policyCandidateTop16Correct"] / max(metrics["policyCount"], 1),
         "resultCount": int(metrics["resultCount"]),
         "policyCount": int(metrics["policyCount"]),
         "effective": int(metrics["effective"]),

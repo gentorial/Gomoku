@@ -2,12 +2,14 @@ import argparse
 from contextlib import ExitStack
 import hashlib
 import json
+import math
 from pathlib import Path
 from .protocol import Pbrain, Worker, binary
+from .rapfi import write_json
 
 
 def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
-                 size=15, rule="freestyle", time_ms=300, depth=8, on_game=None):
+                 size=15, rule="freestyle", time_ms=300, depth=8, on_game=None, completed=()):
     """Each fixed opening is played twice, swapping engines, with no adjudication.
 
     Per-move analysis and complete records make failures and search budgets
@@ -17,7 +19,12 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
         raise ValueError("Need nonempty openings with unique ids")
     if not 0 <= time_ms <= 10000 or not 1 <= depth <= 12:
         raise ValueError("Invalid arena search limits")
-    results = []
+    results = list(completed)
+    expected = [(o["id"], c) for o in openings for c in ("black", "white")]
+    previous = [(r["openingId"], r["aColor"]) for r in results]
+    if previous != expected[:len(previous)] or len(previous) > len(expected):
+        raise ValueError("Arena resume must be an ordered prefix of the same opening pairs")
+    finished = set(previous)
     with Worker() as referee, Worker(engine_a, model_a) as a, Worker(engine_b, model_b) as b:
         for opening in openings:
             state = referee.request("inspect", position={"size": size, "rule": rule,
@@ -26,6 +33,8 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
                 raise ValueError("Opening is already terminal: " + opening["id"])
         for opening in openings:
             for a_black in (True, False):
+                if (opening["id"], "black" if a_black else "white") in finished:
+                    continue
                 players = (a, b) if a_black else (b, a)
                 position = {"size": size, "rule": rule, "moves": list(opening["moves"])}
                 status, failure, analyses = "playing", None, []
@@ -40,6 +49,8 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
                             evaluator="nnue" if selected_model is not None else "handcrafted",
                             limits={"timeMs": time_ms, "maxDepth": depth},
                         )
+                        if selected_model is not None and analysis.get("evaluator") != "line11-nnue-v1":
+                            raise RuntimeError("Arena silently fell back from the requested NNUE")
                         analyses.append({"ply": len(position["moves"]),
                                          "engine": "a" if player is a else "b", **analysis})
                         state = referee.request("play", position=position, move=analysis["bestMove"])
@@ -71,6 +82,26 @@ def summary(results):
             "draws": sum(game["scoreA"] == 0.5 for game in results),
             "winsB": sum(game["scoreA"] == 0 for game in results),
             "failures": sum(game["failure"] is not None for game in results)}
+
+
+def paired_summary(results):
+    """Exact one-sided sign test on independent complete opening pairs.
+
+    Treat the pair as the unit, not the two correlated color-swapped games.
+    Tied pairs provide no sign information. This is a promotion gate, not Elo.
+    """
+    pairs = {}
+    for game in results:
+        colors = pairs.setdefault(game["openingId"], {})
+        if game["aColor"] in colors:
+            raise ValueError("Duplicate color in an arena pair")
+        colors[game["aColor"]] = game["scoreA"]
+    scores = [sum(p.values()) for p in pairs.values() if set(p) == {"black", "white"}]
+    wins, losses = sum(s > 1 for s in scores), sum(s < 1 for s in scores)
+    n = wins + losses
+    p = sum(math.comb(n, k) for k in range(wins, n + 1)) / 2**n if n else 1.0
+    return {"pairs": len(scores), "winningPairs": wins, "losingPairs": losses,
+            "tiedPairs": len(scores) - n, "oneSidedSignP": p}
 
 
 def match(engine_a, engine_b, games=2, size=15, rule="freestyle", time_ms=20):
@@ -116,6 +147,7 @@ def main():
     parser.add_argument("--rule", choices=["freestyle", "standard"], default="freestyle")
     parser.add_argument("--time-ms", type=int, default=20)
     parser.add_argument("--output", type=Path, default=Path("artifacts/arena.json"))
+    parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.protocol == "worker":
@@ -132,15 +164,22 @@ def main():
                   "openings": identity(args.openings), "size": args.size, "rule": args.rule,
                   "limits": {"timeMs": args.time_ms, "maxDepth": args.depth}}
 
+        completed = []
+        if args.output.exists():
+            old = json.loads(args.output.read_text(encoding="utf-8"))
+            if not args.resume or any(old.get(k) != v for k, v in report.items()):
+                parser.error("Arena report already exists; resume requires identical engines, models, openings and limits")
+            completed = old["games"]
+
         def save(results):
-            report.update(summary=summary(results), games=results)
-            args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
+            report.update(summary=summary(results), paired=paired_summary(results), games=results)
+            write_json(args.output, report)
             print(json.dumps(report["summary"]), flush=True)
 
         try:
             worker_match(engine_a, engine_b, opening_set["openings"], model_a=args.model_a,
                          model_b=args.model_b, size=args.size, rule=args.rule,
-                         time_ms=args.time_ms, depth=args.depth, on_game=save)
+                         time_ms=args.time_ms, depth=args.depth, on_game=save, completed=completed)
         except (ValueError, RuntimeError, TimeoutError, OSError) as error:
             parser.exit(2, f"Arena failed: {error}\n")
     else:

@@ -1,0 +1,20 @@
+version = 1
+
+[teacher]
+executable = "../../.tools/rapfi-250615/pbrain-rapfi-windows-avx2.exe"
+
+[generation]
+output = "../../data/teachers/rapfi-v3-general-000"
+jobs = 128
+games_per_job = 16
+workers = 6
+nodes = 20000
+hash_mb = 64
+size = 15
+rule = "freestyle"
+opening_min = 6
+opening_max = 12
+balance_nodes = 100000
+max_plies = 120
+samples_per_game = 64
+job_timeout_seconds = 3600

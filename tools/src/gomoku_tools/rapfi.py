@@ -197,12 +197,20 @@ class Generation:
     opening_max: int = 10
     balance_nodes: int = 100000
     job_timeout_seconds: int = 1800
+    multipv: int = 1
+    multipv_decay_steps: int = 0
+    max_plies: int = 0
+    samples_per_game: int = 0
 
     def validate(self):
         for field in fields(self):
             if field.name in ("output", "rule"):
                 continue
             value = getattr(self, field.name)
+            if field.name in ("multipv_decay_steps", "max_plies", "samples_per_game"):
+                if type(value) is not int or value < 0:
+                    raise ValueError(f"{field.name} must be a nonnegative integer")
+                continue
             if type(value) is not int or value < 1:
                 raise ValueError(f"{field.name} must be a positive integer")
         if not 1 <= self.workers <= 16 or not 16 <= self.hash_mb <= 4096:
@@ -215,6 +223,10 @@ class Generation:
             raise ValueError("Requested rule/size has no supported pinned NNUE teacher")
         if not 6 <= self.opening_min <= self.opening_max <= 20:
             raise ValueError("Require 6 <= opening_min <= opening_max <= 20")
+        if self.multipv > 32 or self.samples_per_game > self.size*self.size:
+            raise ValueError("MultiPV <= 32 and samples_per_game <= board area required")
+        if self.max_plies and not self.opening_max < self.max_plies <= self.size*self.size:
+            raise ValueError("max_plies must follow the opening and fit the board")
 
 
 def load_config(path):
@@ -338,7 +350,12 @@ def command(executable, config, raw):
         "--mate-ply",
         "1",
         "--multipv",
-        "1",
+        str(config.multipv),
+        "--multipv-decay-steps",
+        str(config.multipv_decay_steps),
+        "--no-multipv-after-mate",
+        "--force-draw-ply",
+        str(config.max_plies),
         "--output-type",
         "binpack",
         "--output",
@@ -349,7 +366,7 @@ def command(executable, config, raw):
     ]
 
 
-def convert(raw, annotations, games_path, teacher):
+def convert(raw, annotations, games_path, teacher, samples_per_game=0):
     counts = {
         "games": 0,
         "positions": 0,
@@ -364,7 +381,7 @@ def convert(raw, annotations, games_path, teacher):
         def write_games(game_stream):
             with Worker() as worker:
                 for game in read_games(raw):
-                    records, record = annotated_game(game, worker, teacher, source)
+                    records, record = annotated_game(game, worker, teacher, source, samples_per_game)
                     counts["games"] += 1
                     counts["terminalGames"] += record["status"] != "playing"
                     game_stream.write(json.dumps(record, allow_nan=False) + "\n")
@@ -387,6 +404,26 @@ def convert(raw, annotations, games_path, teacher):
 
 
 def run_job(index, executable, config, teacher, identity, stop):
+    # Rapfi's signal handler also catches native faults and can exit with code
+    # zero before its requested game count. Retry a bounded number of times;
+    # never publish the truncated binpack as a successful batch.
+    for attempt in range(3):
+        try:
+            return run_job_once(index, executable, config, teacher, identity, stop)
+        except RuntimeError as error:
+            if (stop.is_set() or attempt == 2 or not str(error).startswith(
+                    ("Rapfi exited with code", "Teacher did not finish job"))):
+                raise
+            root = Path(config.output)
+            log = root / f"job-{index:05d}.log"
+            if log.exists():
+                stamp = time.time_ns()
+                shutil.copyfile(log, root / f"job-{index:05d}.failed-{stamp}.log")
+            print(json.dumps({"event": "teacher-retry", "job": index,
+                              "attempt": attempt + 2, "reason": str(error)[:240]}), flush=True)
+
+
+def run_job_once(index, executable, config, teacher, identity, stop):
     root = Path(config.output)
     stem = f"job-{index:05d}"
     summary = root / (stem + ".json")
@@ -443,7 +480,7 @@ def run_job(index, executable, config, teacher, identity, stop):
         root / (stem + ".annotations.jsonl"),
         root / (stem + ".games.jsonl"),
     )
-    counts = convert(raw, annotations, games_path, teacher)
+    counts = convert(raw, annotations, games_path, teacher, config.samples_per_game)
     if counts["games"] != config.games_per_job:
         raise ValueError("Teacher produced an unexpected game count")
     result = {
@@ -474,12 +511,15 @@ def generate_locked(executable, config, resume=False):
         "requestedNodes": config.nodes,
         "threads": 1,
         "hashMiB": config.hash_mb,
-        "multipv": 1,
+        "multipv": config.multipv,
         "actualNodesRecorded": False,
     }
     settings = asdict(config)
     settings.pop("output")
     settings.pop("workers")
+    for name in ("multipv", "multipv_decay_steps", "max_plies", "samples_per_game"):
+        if settings[name] == getattr(Generation(), name):
+            settings.pop(name)
     identity = digest({"teacher": teacher, "generation": settings, "format": FORMAT})
     setup = root / "generation.json"
     if any(path.name != ".generation.lock" for path in root.iterdir()):

@@ -158,16 +158,22 @@ def decode_batch(samples, size, augment_rng=None):
     white = np.unpackbits(rows["white"], axis=1, bitorder="little")[:, : size * size]
     boards = (black + 2 * white).reshape(count, size, size).astype(np.int64)
     policy = np.zeros((count, size * size), dtype=np.float32)
+    policy_best = np.zeros(count, dtype=np.int64)
     for i, row in enumerate(rows):
         n = int(row["policy_count"])
         policy[i, row["policy_moves"][:n]] = row["policy_probs"][:n]
+        best = np.zeros((size, size), dtype=np.uint8)
+        best.flat[int(row["policy_moves"][0])] = 1
         if augment_rng is not None:
             orientation = int(augment_rng.integers(8))
             board = np.rot90(boards[i], orientation % 4)
             target = np.rot90(policy[i].reshape(size, size), orientation % 4)
+            best = np.rot90(best, orientation % 4)
             if orientation >= 4:
                 board, target = np.fliplr(board), np.fliplr(target)
+                best = np.fliplr(best)
             boards[i], policy[i] = board.copy(), target.reshape(-1).copy()
+        policy_best[i] = best.argmax()
     return {
         "boards": boards,
         "turn": rows["turn"].astype(np.int64),
@@ -176,5 +182,6 @@ def decode_batch(samples, size, augment_rng=None):
         "teacher_score": rows["teacher_score"].copy(),
         "score_kind": rows["score_kind"].copy(),
         "policy": policy,
+        "policy_best": policy_best,
         "policy_kind": rows["policy_kind"].copy(),
     }

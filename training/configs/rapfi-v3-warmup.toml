@@ -1,0 +1,40 @@
+version = 1
+
+[model]
+architecture = "line11-dual-v1"
+mapping_width = 64
+channels = 64
+value_hidden = 128
+policy_hidden = 32
+qat = true
+
+[data]
+manifest = "../../data/training/rapfi-v3-warmup/manifest.json"
+augment = true
+shuffle_block = 65536
+
+[loss]
+value_target = "expected_score"
+teacher_weight = 0.95
+result_weight = 0.05
+policy_weight = 0.25
+score_scale = 400.0
+
+[run]
+output = "../../artifacts/training/rapfi-v3-warmup"
+device = "auto"
+precision = "bf16"
+seed = 42
+batch_size = 64
+micro_batch_size = 8
+steps = 5000
+learning_rate = 0.0005
+weight_decay = 0.0001
+warmup_steps = 250
+min_lr_ratio = 0.1
+grad_clip = 1.0
+validate_every = 500
+validation_batches = 32
+checkpoint_every = 500
+log_every = 100
+cpu_threads = 4

@@ -8,7 +8,7 @@ import createModule from "../packages/engine-wasm/generated/gomoku-engine.mjs";
 
 const pin = JSON.parse(await readFile(resolve(root, "models/web-model.json"), "utf8"));
 const path = resolve(root, "apps/web/public/models", pin.sha256, "weights.gnn");
-const referencePath = resolve(root, "tests/fixtures/nnue-rapfi-calibrated-v1.json");
+const referencePath = resolve(root, `tests/fixtures/nnue-${pin.id}.json`);
 const reference = JSON.parse(await readFile(referencePath, "utf8"));
 const bytes = await readFile(path);
 assert.equal(bytes.length, pin.bytes);
@@ -160,7 +160,7 @@ const report = {
 };
 await mkdir(resolve(root, "artifacts/runtime"), { recursive: true });
 await writeFile(
-  resolve(root, "artifacts/runtime/rapfi-calibrated-v1.json"),
+  resolve(root, `artifacts/runtime/${pin.id}.json`),
   JSON.stringify(report, null, 2) + "\n",
 );
 console.log(JSON.stringify(report, null, 2));

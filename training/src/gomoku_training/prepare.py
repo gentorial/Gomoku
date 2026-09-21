@@ -155,7 +155,8 @@ def pack_sample(sample):
     if (
         row["result"] == -1
         and np.isnan(row["teacher_wdl"]).all()
-        and row["score_kind"] != 1
+        and not (row["score_kind"] == 1 or
+                 (row["score_kind"] == 2 and row["teacher_score"] != 0))
         and not row["policy_count"]
     ):
         raise ValueError("Sample has no usable supervision")
