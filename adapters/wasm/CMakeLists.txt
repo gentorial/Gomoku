@@ -14,7 +14,7 @@ target_link_options(gomoku-wasm PRIVATE
   --no-entry
   -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createGomokuModule
   -sENVIRONMENT=web,worker,node
-  "-sEXPORTED_FUNCTIONS=['_gomoku_request','_gomoku_load_model','_gomoku_nnue_predict','_malloc','_free']"
+  "-sEXPORTED_FUNCTIONS=['_gomoku_request','_gomoku_load_model','_gomoku_nnue_predict','_gomoku_set_log_level','_malloc','_free']"
   "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8']"
   -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2147483648
   -sSTACK_SIZE=1048576 -sFILESYSTEM=0)

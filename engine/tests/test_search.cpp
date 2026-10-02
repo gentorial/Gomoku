@@ -65,7 +65,7 @@ int main() {
             const auto reference = search(position, evaluator, limits, cancel, {}, {false, false});
             require(reference.reason == "completed", "reference must finish");
             validate_pv(position, evaluator, reference);
-            for (const SearchOptions options : {SearchOptions{true, true}, {true, false},
+            for (const SearchOptions& options : {SearchOptions{true, true}, {true, false},
                                                 {false, true}, {true, true, 1}}) {
                 const auto result = search(position, evaluator, limits, cancel, {}, options);
                 require(result.reason == "completed", "optimized search must finish");
@@ -102,6 +102,39 @@ int main() {
         require(failed && evaluator.hashes.size() == 1 && evaluator.hashes.back() == opening.hash(),
                 "evaluator exceptions must unwind both search state stacks");
         evaluator.throw_after = 0;
+        // Diagnostics must preserve minimax, node accounting, and unwind safety.
+        const SearchLimits diagnostic_limits{60000, 3, 0};
+        const auto quiet = search(opening, evaluator, diagnostic_limits, cancel);
+        std::vector<SearchEvent> events;
+        SearchOptions logged;
+        logged.debug_log = true;
+        logged.log = [&](const SearchEvent& event) { events.push_back(event); };
+        const auto verbose = search(opening, evaluator, diagnostic_limits, cancel, {}, logged);
+        require(verbose.best_move == quiet.best_move && verbose.score == quiet.score &&
+                verbose.pv == quiet.pv && verbose.nodes == quiet.nodes,
+                "logging must preserve search results and node counts");
+        require(events.front().event == "search.start" && events.back().event == "search.end" &&
+                events.back().reason == "max_depth" && events.back().completed_depth == 3,
+                "diagnostics must include lifecycle and completed depth");
+        int iterations = 0, details = 0;
+        for (const auto& event : events) {
+            if (event.event == "search.iteration") ++iterations;
+            else if (event.event != "search.start" && event.event != "search.end") ++details;
+        }
+        require(iterations == 3 && details > 0 && details <= 500,
+                "detailed events must be bounded without suppressing iterations");
+        events.clear();
+        const auto timeout = search(opening, evaluator, {0, 8, 0}, cancel, {}, logged);
+        require(timeout.depth == 0 && events.back().reason == "time_limit" &&
+                events.back().attempted_depth == 1 && events.back().completed_depth == 0,
+                "time limit diagnostics must describe incomplete iteration and fallback");
+        events.clear();
+        search(opening, evaluator, {60000, 8, 1}, cancel, {}, logged);
+        require(events.back().reason == "node_limit", "node budget must have a distinct diagnostic reason");
+        logged.log = [](const SearchEvent&) { throw std::runtime_error("log sink unavailable"); };
+        const auto broken_sink = search(opening, evaluator, diagnostic_limits, cancel, {}, logged);
+        require(broken_sink.score == quiet.score && broken_sink.nodes == quiet.nodes && evaluator.hashes.size() == 1,
+                "logging exceptions must not corrupt search state");
         const auto interrupted = search(opening, evaluator, {60000, 8, 0}, cancel,
             [&](const SearchResult&) { cancel = true; });
         require(interrupted.reason == "cancelled" && interrupted.depth == 1 && evaluator.hashes.size() == 1,

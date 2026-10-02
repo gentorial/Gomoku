@@ -91,9 +91,9 @@ class Worker(EngineProcess):
         super().__init__(executable or binary(), ("--model", model) if model is not None else ())
         self._lock = threading.Lock()
 
-    def request(self, method, **params):
+    def request(self, method, *, request_id=None, **params):
         with self._lock:
-            request_id = str(uuid.uuid4())
+            request_id = request_id or str(uuid.uuid4())
             self.send(json.dumps({"v": 1, "id": request_id, "method": method, **params}))
             timeout = params.get("limits", {}).get("timeMs", 0) / 1000 + 5
             response = json.loads(self.receive(timeout))

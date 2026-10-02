@@ -2,11 +2,36 @@ import Fastify from "fastify";
 import { CreateGameSchema, PlaySchema, VersionSchema } from "@gomoku/contracts";
 import { ApiProblem, GameService } from "./games.js";
 import { EngineError, WorkerPool, type Engine } from "./worker-pool.js";
+import { logServer } from "./diagnostics.js";
 
 export function createApp(engine: Engine = new WorkerPool(), logger = false) {
   const app = Fastify({ logger, bodyLimit: 65536, forceCloseConnections: true });
   const games = new GameService(engine);
+  app.addHook("onRequest", async (request) => {
+    logServer("api.request", { requestId: request.id, method: request.method, url: request.url });
+  });
+  app.addHook("onResponse", async (request, reply) => {
+    logServer("api.completed", {
+      requestId: request.id,
+      method: request.method,
+      url: request.url,
+      statusCode: reply.statusCode,
+      elapsedMs: reply.elapsedTime,
+    });
+  });
   app.setErrorHandler((error, request, reply) => {
+    logServer(
+      "api.failed",
+      {
+        requestId: request.id,
+        url: request.url,
+        message: error instanceof Error ? error.message : String(error),
+        ...(error instanceof EngineError || error instanceof ApiProblem
+          ? { code: error.code }
+          : {}),
+      },
+      "error",
+    );
     if (error instanceof ApiProblem)
       return reply.code(error.status).send({ error: { code: error.code, message: error.message } });
     if (error instanceof EngineError) {

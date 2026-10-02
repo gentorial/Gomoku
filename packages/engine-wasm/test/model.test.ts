@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { installModel, loadBrowserModel, parseModel } from "../src/model.js";
 import { BrowserEngine } from "../src/index.js";
+import { configureDiagnostics, type DiagnosticRecord } from "../src/diagnostics.js";
 import type { GomokuModule } from "../generated/gomoku-engine.mjs";
 
 const bytes = new Uint8Array(64).fill(7);
@@ -143,6 +144,9 @@ test("aborting a model load terminates its worker, ignores stale progress, and p
     else Reflect.deleteProperty(globalThis, "Worker");
   });
   const phases: unknown[] = [];
+  const diagnostics: DiagnosticRecord[] = [];
+  configureDiagnostics({ console: false, sink: (record) => diagnostics.push(record) });
+  t.after(() => configureDiagnostics({}));
   const client = new BrowserEngine({
     modelManifestUrl: url,
     onModelProgress: (state) => phases.push(state),
@@ -168,6 +172,25 @@ test("aborting a model load terminates its worker, ignores stale progress, and p
   });
   assert.equal(phases.length, count);
   const next = client.request({ method: "about" });
+  const currentId = workers[1]!.messages[0]!.request.id;
+  // Search logs share the message channel with responses and model progress.
+  // They must never reject a pending request as a malformed protocol response.
+  workers[1]!.onmessage?.({
+    data: {
+      type: "diagnostic",
+      record: {
+        timestampMs: Date.now(),
+        component: "engine",
+        level: "info",
+        event: "search.start",
+        requestId: currentId,
+      },
+    },
+  });
+  assert.equal(workers[1]!.terminated, false);
+  assert.ok(
+    diagnostics.some((record) => record.event === "search.start" && record.requestId === currentId),
+  );
   workers[1]!.onmessage?.({
     data: {
       v: 1,

@@ -1,12 +1,17 @@
 import queue
 import threading
+import time
+import traceback
+import uuid
 import tkinter as tk
 from tkinter import messagebox, ttk
 from gomoku_tools.protocol import Worker
+from .diagnostics import log
 
 
 class Gomoku:
     def __init__(self, root):
+        log("gui.started")
         self.root = root
         root.title("Gomoku · 桌面对弈")
         root.resizable(False, False)
@@ -49,6 +54,7 @@ class Gomoku:
         root.after(40, self.poll)
 
     def start_game(self):
+        log("game.start", mode=self.mode.get(), rule=self.rule.get())
         self.generation += 1
         if self.worker:
             self.worker.close()
@@ -60,6 +66,7 @@ class Gomoku:
         try:
             self.worker = Worker()
         except OSError as error:
+            log("worker.start_failed", level="error", message=str(error))
             messagebox.showerror("引擎启动失败", str(error) + "\n请先运行 pnpm engine:build")
             return
         self.submit("inspect", position=self.position())
@@ -68,18 +75,28 @@ class Gomoku:
         return {"size": self.size, "rule": self.current_rule, "moves": list(self.moves)}
 
     def submit(self, method, **params):
+        request_id = str(uuid.uuid4())
+        log("search.requested" if method == "analyze" else "request.submitted",
+            requestId=request_id, method=method, generation=self.generation,
+            plyCount=len(params.get("position", {}).get("moves", [])),
+            limits=params.get("limits"), move=params.get("move"))
         self.busy = True
         self.undo_button.configure(state=tk.DISABLED)
         self.status.configure(text="AI 思考中…" if method == "analyze" else "正在更新棋局")
         worker, generation = self.worker, self.generation
 
         def run():
+            started = time.monotonic()
             try:
-                result = worker.request(method, **params)
+                result = worker.request(method, request_id=request_id, **params)
+                log("request.completed", requestId=request_id, method=method,
+                    elapsedMs=(time.monotonic() - started) * 1000)
                 if method == "analyze":
+                    log("search.result", requestId=request_id, result=result)
                     result = worker.request("play", position=params["position"], move=result["bestMove"])
                 self.messages.put((generation, result, None))
             except Exception as error:
+                log("request.failed", level="error", requestId=request_id, method=method, message=str(error), stack=traceback.format_exc())
                 self.messages.put((generation, None, str(error)))
         threading.Thread(target=run, daemon=True).start()
 
@@ -87,6 +104,7 @@ class Gomoku:
         while not self.messages.empty():
             generation, result, error = self.messages.get_nowait()
             if generation != self.generation:
+                log("operation.result_discarded", level="debug", generation=generation, currentGeneration=self.generation)
                 continue
             self.busy = False
             self.undo_button.configure(state=tk.NORMAL)
@@ -95,6 +113,7 @@ class Gomoku:
                 messagebox.showerror("引擎通信错误", error)
                 continue
             self.state = result
+            log("position.updated", plyCount=len(result["moves"]), status=result["status"])
             self.moves = result["moves"]
             self.draw()
             if result["status"] != "playing":
@@ -126,6 +145,7 @@ class Gomoku:
             moves.pop()
         position = self.position()
         position["moves"] = moves
+        log("game.undo", fromPly=len(self.moves), toPly=len(moves))
         self.submit("inspect", position=position)
 
     def draw(self):
@@ -146,6 +166,7 @@ class Gomoku:
                                         fill="#fffdf1" if black else "#202b23")
 
     def close(self):
+        log("gui.closed")
         self.generation += 1
         if self.worker:
             self.worker.close()

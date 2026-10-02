@@ -1,4 +1,5 @@
 #include "codec.h"
+#include "diagnostics.h"
 #include <cmath>
 #include <stdexcept>
 
@@ -55,7 +56,13 @@ std::unique_ptr<Evaluator> evaluator_for(const json& request, const Position& po
     if (selection != "auto" && selection != "nnue" && selection != "handcrafted")
         throw std::invalid_argument("Unknown evaluator");
     if (selection == "nnue" && (!model || !model->supports(position)))
+    {
+        diagnostic("evaluator.selection_failed", {{"requestId", request.at("id")}, {"requested", selection}, {"modelLoaded", bool(model)}});
         throw std::invalid_argument("NNUE model is missing or does not support this board/rule");
+    }
+    diagnostic("evaluator.selected", {{"requestId", request.at("id")}, {"requested", selection},
+        {"actual", selection != "handcrafted" && model && model->supports(position) ? "line11-nnue-v1" : "handcrafted-v1"},
+        {"modelLoaded", bool(model)}});
     if (selection != "handcrafted" && model && model->supports(position))
         return std::make_unique<NnueEvaluator>(model);
     return std::make_unique<HandcraftedEvaluator>();
@@ -75,6 +82,7 @@ json dispatch(const json& request, const std::shared_ptr<const NnueModel>& model
     if (method != "analyze") return position_json(position, moves);
     auto evaluator = evaluator_for(request, position, model);
     const std::atomic_bool cancelled{false};
-    return analysis_json(search(position, *evaluator, limits_from(request), cancelled), evaluator->name());
+    return analysis_json(search(position, *evaluator, limits_from(request), cancelled, {},
+        logged_search_options(request, position)), evaluator->name());
 }
 }

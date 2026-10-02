@@ -1,21 +1,32 @@
 #include "codec.h"
+#include "diagnostics.h"
 #include <emscripten/emscripten.h>
 #include <cstring>
+#include <iostream>
 
 namespace {
 std::shared_ptr<const gomoku::NnueModel> model;
 std::string model_error;
 }
+extern "C" EMSCRIPTEN_KEEPALIVE void gomoku_set_log_level(int level) {
+    gomoku::wire::set_diagnostic_sink(level == 0 ? gomoku::wire::DiagnosticSink{} :
+        gomoku::wire::DiagnosticSink{[](const gomoku::wire::json& record) {
+            std::cerr << record.dump() << '\n';
+        }}, level == 2);
+}
 // Bytes are copied into validated, immutable tensors. The caller owns/frees
 // the input allocation. A failed replacement preserves the previous model.
 extern "C" EMSCRIPTEN_KEEPALIVE const char* gomoku_load_model(const std::uint8_t* data, std::size_t size) {
     try {
+        gomoku::wire::diagnostic("model.install_start", {{"bytes", size}});
         if (!data || size == 0) throw std::invalid_argument("Missing NNUE bytes");
         auto next = gomoku::NnueModel::load({data, size});
         model = std::move(next);
         model_error.clear();
+        gomoku::wire::diagnostic("model.ready", {{"bytes", model->bytes()}, {"size", model->size()}, {"rule", gomoku::rule_name(model->rule())}});
     } catch (const std::exception& error) {
         model_error = error.what();
+        gomoku::wire::diagnostic("model.install_failed", {{"message", error.what()}});
     }
     return model_error.c_str();
 }
@@ -69,8 +80,10 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char* gomoku_request(const char* input) {
         id = request.at("id").get<std::string>();
         if (id.empty() || id.size() > 128) throw std::invalid_argument("Invalid request id");
         integer(request, "v", 1, 1);
+        diagnostic("worker.request", {{"requestId", id}, {"method", request.at("method")}});
         response = {{"v", 1}, {"id", id}, {"ok", true}, {"result", dispatch(request, model)}};
     } catch (const std::exception& error) {
+        diagnostic("worker.request_failed", {{"requestId", id}, {"message", error.what()}});
         response = {{"v", 1}, {"id", id}, {"ok", false},
                     {"error", {{"code", "INVALID_REQUEST"}, {"message", error.what()}}}};
     }

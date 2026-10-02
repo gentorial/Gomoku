@@ -9,6 +9,7 @@ import {
   type PositionResult,
   type WorkerResult,
 } from "@gomoku/contracts";
+import { logDiagnostic } from "@gomoku/engine-wasm";
 
 export type LastAnalysis = { result: Analysis; color: Color; ply: number };
 export type MatchSnapshot = {
@@ -68,6 +69,8 @@ export class MatchController {
     this.listeners.forEach((listener) => listener());
   }
   private invalidate() {
+    if (this.abort)
+      logDiagnostic("gui", "operation.cancel_requested", { generation: this.generation });
     ++this.generation;
     this.abort?.abort();
     this.abort = null;
@@ -85,12 +88,35 @@ export class MatchController {
     this.update({ ...patch, busy: true, error: null });
     try {
       const result = await action(abort.signal);
-      if (this.disposed || token !== this.generation) return;
+      if (this.disposed || token !== this.generation) {
+        logDiagnostic(
+          "gui",
+          "operation.result_discarded",
+          { generation: token, currentGeneration: this.generation },
+          "debug",
+        );
+        return;
+      }
       this.abort = null;
       this.update({ ...result, busy: false, thinking: null });
+      logDiagnostic("gui", "position.updated", {
+        generation: token,
+        plyCount: this.state.position?.moves.length,
+        status: this.state.position?.status,
+      });
       this.schedule();
     } catch (error) {
       if (this.disposed || token !== this.generation) return;
+      logDiagnostic(
+        "gui",
+        "operation.failed",
+        {
+          generation: token,
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+        "error",
+      );
       this.abort = null;
       this.update({
         busy: false,
@@ -103,6 +129,7 @@ export class MatchController {
 
   start(config: MatchConfig = this.state.config) {
     const next = MatchConfigSchema.parse(config);
+    logDiagnostic("gui", "game.start", { config: next });
     return this.operate(
       async (signal) => {
         const position = asPosition(
@@ -124,6 +151,11 @@ export class MatchController {
   play(move: Move) {
     const position = this.state.position;
     if (!position || !this.canPlay()) return Promise.resolve();
+    logDiagnostic("gui", "move.human", {
+      move,
+      toMove: position.toMove,
+      plyCount: position.moves.length,
+    });
     return this.operate(async (signal) => ({
       position: asPosition(
         await this.engine.request(
@@ -154,11 +186,23 @@ export class MatchController {
       this.timer = null;
       void this.runAI();
     }, this.paceMs);
+    logDiagnostic(
+      "gui",
+      "search.scheduled",
+      { toMove: position.toMove, delayMs: this.paceMs },
+      "debug",
+    );
   }
   private runAI() {
     const { position, config, busy } = this.state;
     if (!position || busy || position.status !== "playing" || isHuman(config, position.toMove))
       return Promise.resolve();
+    logDiagnostic("gui", "search.requested", {
+      toMove: position.toMove,
+      plyCount: position.moves.length,
+      evaluator: config.evaluator,
+      timeMs: position.toMove === "black" ? config.blackTimeMs : config.whiteTimeMs,
+    });
     return this.operate(
       async (signal) => {
         const result = await this.engine.request(
@@ -175,6 +219,17 @@ export class MatchController {
         );
         signal.throwIfAborted();
         if (result.kind !== "analysis" || !result.bestMove) throw new Error("引擎未返回合法落子");
+        logDiagnostic("gui", "search.result", {
+          bestMove: result.bestMove,
+          score: result.score,
+          depth: result.depth,
+          nodes: result.nodes,
+          elapsedMs: result.elapsedMs,
+          reason: result.reason,
+          evaluator: result.evaluator,
+          model: result.model,
+          pv: result.pv,
+        });
         const next = asPosition(
           await this.engine.request(
             { method: "play", position: positionInput(position), move: result.bestMove },
@@ -192,16 +247,19 @@ export class MatchController {
 
   pause() {
     if (this.state.config.mode !== "ai-ai" || this.disposed) return;
+    logDiagnostic("gui", "game.paused");
     this.invalidate();
     this.update({ paused: true, busy: false, thinking: null });
   }
   resume() {
     if (this.disposed || this.state.busy) return;
+    logDiagnostic("gui", "game.resumed");
     this.update({ paused: false, error: null });
     this.schedule();
   }
   step() {
     if (this.state.config.mode !== "ai-ai" || this.state.busy) return Promise.resolve();
+    logDiagnostic("gui", "game.step");
     this.pause();
     return this.runAI();
   }
@@ -220,6 +278,7 @@ export class MatchController {
     const { position, config } = this.state;
     const length = this.undoLength();
     if (!position || length === null) return Promise.resolve();
+    logDiagnostic("gui", "game.undo", { fromPly: position.moves.length, toPly: length });
     return this.operate(
       async (signal) => ({
         position: asPosition(
@@ -238,6 +297,7 @@ export class MatchController {
     );
   }
   dispose() {
+    logDiagnostic("gui", "gui.closed");
     this.disposed = true;
     this.invalidate();
     this.listeners.clear();

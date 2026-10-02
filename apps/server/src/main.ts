@@ -1,5 +1,6 @@
 import { createApp } from "./app.js";
 import { WorkerPool, defaultWorkerPath } from "./worker-pool.js";
+import { logServer } from "./diagnostics.js";
 
 const app = createApp(
   new WorkerPool(
@@ -16,3 +17,4 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 await app.listen({ host: process.env.HOST || "127.0.0.1", port });
+logServer("server.started", { host: process.env.HOST || "127.0.0.1", port });

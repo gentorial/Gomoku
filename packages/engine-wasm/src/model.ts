@@ -1,4 +1,5 @@
 import type { GomokuModule } from "../generated/gomoku-engine.mjs";
+import { logDiagnostic } from "./diagnostics.js";
 
 export type ModelProgress = {
   phase: "downloading" | "verifying" | "initializing" | "ready";
@@ -62,13 +63,47 @@ export async function loadBrowserModel(
   engine: GomokuModule,
   manifestUrl: string,
   progress: (state: ModelProgress) => void,
+  requestId?: string,
 ): Promise<BrowserModel> {
+  const started = performance.now();
+  try {
+    return await loadModel(engine, manifestUrl, progress, requestId);
+  } catch (error) {
+    logDiagnostic(
+      "model",
+      "model.load_failed",
+      {
+        requestId,
+        manifestUrl,
+        elapsedMs: performance.now() - started,
+        message: error instanceof Error ? error.message : String(error),
+      },
+      "error",
+    );
+    throw error;
+  }
+}
+
+async function loadModel(
+  engine: GomokuModule,
+  manifestUrl: string,
+  progress: (state: ModelProgress) => void,
+  requestId?: string,
+): Promise<BrowserModel> {
+  const started = performance.now();
+  logDiagnostic("model", "model.load_start", { requestId, manifestUrl });
   const response = await fetch(manifestUrl, {
     cache: "no-cache",
     signal: AbortSignal.timeout(30000),
   });
   if (!response.ok) throw new Error("NNUE 模型清单加载失败，请重试");
   const model = parseModel(await response.json());
+  logDiagnostic("model", "model.manifest_ready", {
+    requestId,
+    modelId: model.id,
+    bytes: model.bytes,
+    sha256: model.sha256,
+  });
   const url = new URL(model.weights, manifestUrl).href;
   let cache: Cache | undefined;
   try {
@@ -76,8 +111,19 @@ export async function loadBrowserModel(
   } catch {
     /* Private browsing/quota: memory still works. */
   }
-  const report = (phase: ModelProgress["phase"], loaded = model.bytes) =>
+  let lastPhase: ModelProgress["phase"] | undefined;
+  const report = (phase: ModelProgress["phase"], loaded = model.bytes) => {
+    if (phase !== lastPhase) {
+      logDiagnostic("model", "model.phase", {
+        requestId,
+        modelId: model.id,
+        phase,
+        elapsedMs: performance.now() - started,
+      });
+      lastPhase = phase;
+    }
     progress({ phase, loaded, total: model.bytes });
+  };
   async function read(response: Response, downloading: boolean) {
     if (!response.ok || !response.body) throw new Error("NNUE 权重下载失败，请重试");
     const bytes = new Uint8Array(model.bytes);
@@ -106,10 +152,22 @@ export async function loadBrowserModel(
   }
   let bytes: Uint8Array | undefined;
   const cached = await cache?.match(url).catch(() => undefined);
+  logDiagnostic("model", "model.cache", {
+    requestId,
+    modelId: model.id,
+    hit: !!cached,
+    available: !!cache,
+  });
   if (cached) {
     try {
       bytes = await read(cached, false);
-    } catch {
+    } catch (error) {
+      logDiagnostic(
+        "model",
+        "model.cache_invalid",
+        { requestId, message: error instanceof Error ? error.message : String(error) },
+        "warn",
+      );
       await cache?.delete(url).catch(() => {});
     }
   }
@@ -136,5 +194,10 @@ export async function loadBrowserModel(
   if (!about.ok || about.result.nnue?.size !== model.size || about.result.nnue?.rule !== model.rule)
     throw new Error("NNUE 权重与清单的棋盘或规则不一致");
   report("ready");
+  logDiagnostic("model", "model.load_completed", {
+    requestId,
+    modelId: model.id,
+    elapsedMs: performance.now() - started,
+  });
   return model;
 }

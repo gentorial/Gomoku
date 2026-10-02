@@ -5,11 +5,54 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { Position, WorkerRequest } from "@gomoku/contracts";
 import { createTestEngine, loadEngine } from "./engine.js";
+import createGomokuModule from "../generated/gomoku-engine.mjs";
 
 const fixture = JSON.parse(
   await readFile(new URL("../../../tests/fixtures/winning-move.json", import.meta.url), "utf8"),
 );
 const empty: Position = { size: 15, rule: "freestyle", moves: [] };
+
+test("WASM search diagnostics use stderr and preserve the response envelope", async () => {
+  const records: { event: string; reason?: string; requestId?: string }[] = [];
+  const module = await createGomokuModule({
+    wasmBinary: await readFile(new URL("../generated/gomoku-engine.wasm", import.meta.url)),
+    printErr: (line) => records.push(JSON.parse(line)),
+  });
+  module._gomoku_set_log_level(2);
+  const response = JSON.parse(
+    module.ccall(
+      "gomoku_request",
+      "string",
+      ["string"],
+      [
+        JSON.stringify({
+          v: 1,
+          id: "wasm-logged-search",
+          method: "analyze",
+          position: empty,
+          limits: { timeMs: 10000, maxDepth: 2 },
+          evaluator: "handcrafted",
+        }),
+      ],
+    ),
+  );
+  assert.equal(response.ok, true);
+  assert.equal(response.result.depth, 2);
+  assert.ok(records.some((record) => record.event === "search.candidates"));
+  assert.ok(records.some((record) => record.event === "search.iteration"));
+  const end = records.find((record) => record.event === "search.end");
+  assert.equal(end?.reason, "max_depth");
+  assert.equal(end?.requestId, "wasm-logged-search");
+  module._gomoku_set_log_level(0);
+  const count = records.length;
+  module.ccall(
+    "gomoku_request",
+    "string",
+    ["string"],
+    [JSON.stringify({ v: 1, id: "quiet", method: "about" })],
+  );
+  assert.equal(records.length, count);
+});
 
 test("WASM shares the native adapter's position and winning-move semantics", async () => {
   const engine = await createTestEngine();

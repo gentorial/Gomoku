@@ -3,9 +3,10 @@ import { test } from "node:test";
 import { GameSchema, type WorkerPayload, type WorkerResult } from "@gomoku/contracts";
 import { createApp } from "../src/app.js";
 import { WorkerPool, defaultWorkerPath, type Engine } from "../src/worker-pool.js";
+const workerPath = process.env.GOMOKU_ENGINE_PATH || defaultWorkerPath;
 
 test("HTTP: native validation, human move, real AI response, versioned undo", async (t) => {
-  const app = createApp(new WorkerPool(defaultWorkerPath, 1));
+  const app = createApp(new WorkerPool(workerPath, 1));
   t.after(() => app.close());
   const health = await app.inject({ method: "GET", url: "/api/health" });
   assert.equal(health.statusCode, 200);
@@ -79,7 +80,7 @@ test("a duplicate concurrent move cannot be applied twice", async (t) => {
 });
 
 test("undo invalidates even a worker that ignores cancellation", async (t) => {
-  const native = new WorkerPool(defaultWorkerPath, 1);
+  const native = new WorkerPool(workerPath, 1);
   let started!: () => void;
   let release!: (value: WorkerResult) => void;
   const waiting = new Promise<void>((resolve) => {
@@ -142,7 +143,7 @@ test("undo invalidates even a worker that ignores cancellation", async (t) => {
 });
 
 test("pool cancels active and queued work and recovers with a fresh process", async () => {
-  const pool = new WorkerPool(defaultWorkerPath, 1);
+  const pool = new WorkerPool(workerPath, 1);
   try {
     const active = new AbortController();
     const queued = new AbortController();
@@ -168,7 +169,7 @@ test("pool cancels active and queued work and recovers with a fresh process", as
 });
 
 test("unavailable native executable is surfaced as a service error", async (t) => {
-  const app = createApp(new WorkerPool(defaultWorkerPath + "-missing", 1));
+  const app = createApp(new WorkerPool(workerPath + "-missing", 1));
   t.after(() => app.close());
   const result = await app.inject({ method: "GET", url: "/api/health" });
   assert.equal(result.statusCode, 503);
