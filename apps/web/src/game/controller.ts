@@ -15,6 +15,8 @@ export type MatchSnapshot = {
   config: MatchConfig;
   position: PositionResult | null;
   analysis: LastAnalysis | null;
+  /** Every AI analysis still on the board, so undo can show the previous one. */
+  analyses: LastAnalysis[];
   busy: boolean;
   thinking: Color | null;
   paused: boolean;
@@ -24,6 +26,7 @@ export const initialSnapshot: MatchSnapshot = {
   config: MatchConfigSchema.parse({}),
   position: null,
   analysis: null,
+  analyses: [],
   busy: false,
   thinking: null,
   paused: false,
@@ -111,7 +114,7 @@ export class MatchController {
             signal,
           ),
         );
-        return { position, config: next, analysis: null, paused: false };
+        return { position, config: next, analysis: null, analyses: [], paused: false };
       },
       { thinking: null },
     );
@@ -181,9 +184,11 @@ export class MatchController {
             signal,
           ),
         );
+        const analysis = { result, color: position.toMove, ply: next.moves.length };
         return {
           position: next,
-          analysis: { result, color: position.toMove, ply: next.moves.length },
+          analysis,
+          analyses: [...this.state.analyses.filter((a) => a.ply < analysis.ply), analysis],
         };
       },
       { thinking: position.toMove },
@@ -221,8 +226,8 @@ export class MatchController {
     const length = this.undoLength();
     if (!position || length === null) return Promise.resolve();
     return this.operate(
-      async (signal) => ({
-        position: asPosition(
+      async (signal) => {
+        const next = asPosition(
           await this.engine.request(
             {
               method: "inspect",
@@ -230,10 +235,15 @@ export class MatchController {
             },
             signal,
           ),
-        ),
-        analysis: null,
-        paused: config.mode === "ai-ai",
-      }),
+        );
+        const analyses = this.state.analyses.filter((a) => a.ply <= length);
+        return {
+          position: next,
+          analysis: analyses.at(-1) ?? null,
+          analyses,
+          paused: config.mode === "ai-ai",
+        };
+      },
       { thinking: null },
     );
   }

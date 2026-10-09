@@ -100,6 +100,22 @@ test("human black triggers exactly one AI response, undo restores the decision p
   assert.equal(state().analysis, null);
 });
 
+test("undo shows the AI analysis of the move left on the board", async (t) => {
+  const { controller, state } = await setup(t, "human-ai");
+  await controller.play(winningMoves[0]!);
+  await waitFor(() => state().position?.moves.length === 2, "first AI reply");
+  await controller.play(winningMoves[2]!);
+  await waitFor(() => state().position?.moves.length === 4, "second AI reply");
+  assert.equal(state().analysis?.ply, 4);
+  await controller.undo();
+  assert.equal(state().position?.moves.length, 2);
+  assert.equal(state().analysis?.ply, 2);
+  assert.deepEqual(
+    state().analyses.map((a) => a.ply),
+    [2],
+  );
+});
+
 test("human white gets an AI opening and undo preserves that opening", async (t) => {
   const { controller, state } = await setup(t, "human-ai", "white");
   await controller.play({ x: 0, y: 0 });
@@ -110,6 +126,7 @@ test("human white gets an AI opening and undo preserves that opening", async (t)
   await controller.undo();
   assert.equal(state().position?.moves.length, 1);
   assert.equal(state().position?.toMove, "white");
+  assert.equal(state().analysis?.ply, 1);
 });
 
 test("AI versus AI stops at terminal, pauses, steps exactly one move and undoes paused", async (t) => {
