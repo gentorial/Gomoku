@@ -1,6 +1,6 @@
 {
   "id": "rapfi-v3-5ad5f4cf8772",
-  "label": "Rapfi NNUE v3",
+  "label": "NNUE v3",
   "architecture": "line11-dual-v1",
   "size": 15,
   "rule": "freestyle",

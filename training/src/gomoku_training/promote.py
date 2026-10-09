@@ -137,7 +137,7 @@ def promote(root, *, publish=False, push=False):
     fixture = ROOT / "tests/fixtures" / f"nnue-{identifier}.json"
     fixture.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(root / "assessment/reference-vectors.json", fixture)
-    pin.update(id=identifier, label="Rapfi NNUE v3", bytes=model.stat().st_size, sha256=checksum,
+    pin.update(id=identifier, label="NNUE v3", bytes=model.stat().st_size, sha256=checksum,
                url=f"{repo['url']}/releases/download/{tag}/weights.gnn")
     write_json(pin_path, pin)
     staged = ROOT / "apps/web/public/models" / checksum / "weights.gnn"

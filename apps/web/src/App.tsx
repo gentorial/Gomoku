@@ -201,7 +201,7 @@ function Settings({
                 value="nnue"
                 disabled={!modelAvailable || draft.size !== 15 || draft.rule !== "freestyle"}
               >
-                Rapfi NNUE v3
+                NNUE v3
               </option>
               <option value="handcrafted">基础引擎</option>
             </select>
