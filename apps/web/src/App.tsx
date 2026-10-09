@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import {
   Bot,
   ChartNoAxesCombined,
-  Check,
   ChevronRight,
   Download,
   LoaderCircle,
@@ -18,7 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { BrowserEngine, type ModelProgress } from "@gomoku/engine-wasm";
-import type { MatchConfig, Rule } from "@gomoku/contracts";
+import type { Analysis, Color, MatchConfig, Rule } from "@gomoku/contracts";
 import { Board, colorName, pointName } from "./Board.js";
 import { MatchController, initialSnapshot, isHuman } from "./game/controller.js";
 
@@ -101,11 +100,41 @@ function Panel({
   );
 }
 
-const modes: { value: MatchConfig["mode"]; label: string; icon: LucideIcon }[] = [
-  { value: "human-human", label: "人人", icon: Users },
-  { value: "human-ai", label: "人机", icon: UserRound },
-  { value: "ai-ai", label: "机机", icon: Bot },
-];
+function Choice<T extends string | number>({
+  label,
+  value,
+  options,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: ReactNode; disabled?: boolean; title?: string }[];
+  onChange: (value: T) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="setting-row" role="group" aria-label={label}>
+      <span className="setting-label">{label}</span>
+      <div className="choices">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={value === option.value}
+            disabled={option.disabled}
+            title={option.title}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function Settings({
   config,
   onStart,
@@ -125,23 +154,24 @@ function Settings({
     const key = color === "black" ? "blackTimeMs" : "whiteTimeMs";
     const label = draft.mode === "ai-ai" ? colorName(color) + "思考时间" : "AI 思考时间";
     return (
-      <label className="time-field" key={color}>
-        <span>
-          {label}
-          <output>{(draft[key] / 1000).toFixed(1)} 秒 / 手</output>
+      <label className="setting-row" key={color}>
+        <span className="setting-label">{label}</span>
+        <span className="time-control">
+          <input
+            aria-label={label}
+            type="range"
+            min={100}
+            max={3000}
+            step={100}
+            value={draft[key]}
+            onChange={(event) => update({ [key]: Number(event.target.value) })}
+          />
+          <output>{(draft[key] / 1000).toFixed(1)} 秒</output>
         </span>
-        <input
-          aria-label={label}
-          type="range"
-          min={100}
-          max={3000}
-          step={100}
-          value={draft[key]}
-          onChange={(event) => update({ [key]: Number(event.target.value) })}
-        />
       </label>
     );
   }
+  const nnueSupported = draft.size === 15 && draft.rule === "freestyle";
   return (
     <form
       onSubmit={(event) => {
@@ -149,87 +179,71 @@ function Settings({
         onStart(draft);
       }}
     >
-      <div className="mode-picker" role="group" aria-label="对弈模式">
-        {modes.map(({ value, label, icon: Icon }) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={draft.mode === value}
-            onClick={() => update({ mode: value })}
-          >
-            <Icon size={20} strokeWidth={1.6} aria-hidden="true" />
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="fields">
-        <label>
-          规则
-          <select
-            value={draft.rule}
-            onChange={(event) => update({ rule: event.target.value as Rule })}
-          >
-            <option value="freestyle">自由五子棋</option>
-            <option value="standard">标准五子棋</option>
-          </select>
-        </label>
-        <label>
-          棋盘
-          <select
-            value={draft.size}
-            onChange={(event) => update({ size: Number(event.target.value) as 15 | 20 })}
-          >
-            <option value={15}>15 × 15</option>
-            <option value={20}>20 × 20</option>
-          </select>
-        </label>
-      </div>
-      <p className="rule-note">
-        {draft.rule === "freestyle" ? "连成五子或以上获胜" : "恰好五子获胜，长连不胜"}
-      </p>
+      <Choice
+        label="模式"
+        value={draft.mode}
+        options={[
+          { value: "human-human", label: "人人" },
+          { value: "human-ai", label: "人机" },
+          { value: "ai-ai", label: "机机" },
+        ]}
+        onChange={(mode) => update({ mode })}
+      />
+      <Choice
+        label="规则"
+        value={draft.rule}
+        options={[
+          { value: "freestyle", label: "自由" },
+          { value: "standard", label: "标准" },
+        ]}
+        onChange={(rule: Rule) => update({ rule })}
+      >
+        {draft.rule === "standard" && <span className="choice-note">长连不胜</span>}
+      </Choice>
+      <Choice
+        label="棋盘"
+        value={draft.size}
+        options={[
+          { value: 15, label: "15" },
+          { value: 20, label: "20" },
+        ]}
+        onChange={(size) => update({ size })}
+      />
       {draft.mode !== "human-human" && (
-        <div className="model-field">
-          <label>
-            AI
-            <select
-              value={draft.evaluator}
-              onChange={(event) =>
-                update({ evaluator: event.target.value as MatchConfig["evaluator"] })
-              }
-            >
-              <option
-                value="nnue"
-                disabled={!modelAvailable || draft.size !== 15 || draft.rule !== "freestyle"}
-              >
-                NNUE v3
-              </option>
-              <option value="handcrafted">基础引擎</option>
-            </select>
-          </label>
-          <p className="rule-note">
-            {draft.evaluator === "nnue"
-              ? "已训练 · 15×15 自由五子棋 · 首次下载约 97 MB"
-              : !modelAvailable
+        <Choice
+          label="AI"
+          value={draft.evaluator}
+          options={[
+            {
+              value: "nnue",
+              label: "NNUE",
+              disabled: !modelAvailable || !nnueSupported,
+              title: !modelAvailable
                 ? "NNUE 权重尚未配置"
-                : "手工评估 · NNUE 支持 15×15 自由五子棋"}
-          </p>
-        </div>
+                : nnueSupported
+                  ? undefined
+                  : "NNUE 仅支持 15×15 自由五子棋",
+            },
+            { value: "handcrafted", label: "基础" },
+          ]}
+          onChange={(evaluator) => update({ evaluator })}
+        />
       )}
       {draft.mode === "human-ai" && (
-        <div className="color-picker" role="group" aria-label="你的执子">
-          {(["black", "white"] as const).map((color) => (
-            <button
-              key={color}
-              type="button"
-              aria-pressed={draft.humanColor === color}
-              onClick={() => update({ humanColor: color })}
-            >
-              <span className={"mini-stone " + color} />
-              {color === "black" ? "执黑先行" : "执白后行"}
-              {draft.humanColor === color && <Check size={14} aria-hidden="true" />}
-            </button>
-          ))}
-        </div>
+        <Choice
+          label="执子"
+          value={draft.humanColor}
+          options={(["black", "white"] as const).map((color) => ({
+            value: color,
+            label: (
+              <>
+                <span className={"mini-stone " + color} />
+                {color === "black" ? "黑" : "白"}
+              </>
+            ),
+          }))}
+          onChange={(humanColor) => update({ humanColor })}
+        />
       )}
       {draft.mode === "human-ai" && timeControl(draft.humanColor === "black" ? "white" : "black")}
       {draft.mode === "ai-ai" && (
@@ -238,11 +252,35 @@ function Settings({
           {timeControl("white")}
         </>
       )}
-      <button type="submit" className="primary-button">
-        <Play size={16} aria-hidden="true" />
-        开始对局
-      </button>
+      <div className="settings-actions">
+        <button type="submit" className="primary-button">
+          开始对局
+        </button>
+      </div>
     </form>
+  );
+}
+
+// Scores are from the mover's side. Mate scores are 100000 minus the plies to
+// the win; heuristic tiers follow each evaluator's scale (NNUE: tanh(score / 600)
+// is P(win) - P(loss)).
+const mateScore = 100000;
+const tiers = { nnue: [60, 250, 660], handcrafted: [100, 500, 2000] } as const;
+function scoreText(result: Analysis, mover: Color) {
+  const { value, kind } = result.score;
+  const side =
+    (value >= 0 ? mover : mover === "black" ? "white" : "black") === "black" ? "黑" : "白";
+  const magnitude = Math.abs(value);
+  if (kind === "mate") return side + Math.max(1, Math.ceil((mateScore - magnitude) / 2)) + "步杀";
+  const [even, slight, clear] =
+    result.evaluator === "line11-nnue-v1" ? tiers.nnue : tiers.handcrafted;
+  if (magnitude < even) return "均势（" + magnitude + "）";
+  return (
+    side +
+    (magnitude < slight ? "略优" : magnitude < clear ? "优势" : "大优") +
+    "（" +
+    magnitude +
+    "）"
   );
 }
 
@@ -345,10 +383,6 @@ export function App() {
               <PlayerIcon size={15} strokeWidth={1.5} aria-hidden="true" />
             )}
           </div>
-          <span className="ply-count">
-            {position?.moves.length ?? 0}
-            <span>手</span>
-          </span>
         </div>
         <Board
           key={position?.size ?? 15}
@@ -389,9 +423,15 @@ export function App() {
           <span className="action-divider" />
           <IconButton
             icon={ChartNoAxesCombined}
-            label="最近一步分析"
+            label="分析"
             active={panel === "analysis"}
             onClick={() => setPanel("analysis")}
+          />
+          <IconButton
+            icon={Download}
+            label="导出棋谱"
+            disabled={!position?.moves.length}
+            onClick={download}
           />
           <IconButton
             icon={Settings2}
@@ -425,7 +465,7 @@ export function App() {
         </Panel>
       )}
       {panel === "analysis" && (
-        <Panel title="最近一步分析" onClose={() => setPanel(null)}>
+        <Panel title="分析" onClose={() => setPanel(null)}>
           {analysis && position ? (
             <>
               <div className="analysis-move">
@@ -438,60 +478,24 @@ export function App() {
                   <span className={"mini-stone " + analysis.color} />第 {analysis.ply} 手
                 </span>
               </div>
-              <dl className="analysis-stats">
-                <div>
-                  <dt>深度</dt>
-                  <dd>{analysis.result.depth}</dd>
+              <p className="analysis-score">{scoreText(analysis.result, analysis.color)}</p>
+              {analysis.result.pv.length > 1 && (
+                <div className="variation">
+                  <span>预想变化</span>
+                  <div>
+                    {analysis.result.pv.slice(1).map((move, i) => (
+                      <span key={i}>
+                        {i > 0 && <ChevronRight size={12} aria-hidden="true" />}
+                        {pointName(move, position.size)}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <dt>节点</dt>
-                  <dd>{analysis.result.nodes.toLocaleString()}</dd>
-                </div>
-                <div>
-                  <dt>用时</dt>
-                  <dd>
-                    {analysis.result.elapsedMs}
-                    <small> ms</small>
-                  </dd>
-                </div>
-                <div>
-                  <dt>评分 · {colorName(analysis.color)}视角</dt>
-                  <dd>
-                    {analysis.result.score.kind === "mate"
-                      ? analysis.result.score.value > 0
-                        ? "搜索判胜"
-                        : "搜索判负"
-                      : (analysis.result.score.value > 0 ? "+" : "") + analysis.result.score.value}
-                  </dd>
-                </div>
-              </dl>
-              <div className="variation">
-                <p className="analysis-model">
-                  <Bot size={14} aria-hidden="true" />
-                  {analysis.result.model?.label ??
-                    (analysis.result.evaluator === "line11-nnue-v1" ? "NNUE" : "基础引擎")}
-                </p>
-                <span>预想变化</span>
-                <div>
-                  {analysis.result.pv.map((move, i) => (
-                    <span key={i}>
-                      {i > 0 && <ChevronRight size={12} aria-hidden="true" />}
-                      {pointName(move, position.size)}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              )}
             </>
           ) : (
             <p className="empty-analysis">暂无分析</p>
           )}
-          <div className="panel-footer">
-            <span>{position?.moves.length ?? 0} 手</span>
-            <button type="button" onClick={download} disabled={!position?.moves.length}>
-              <Download size={16} strokeWidth={1.6} aria-hidden="true" />
-              导出棋谱
-            </button>
-          </div>
         </Panel>
       )}
     </main>
