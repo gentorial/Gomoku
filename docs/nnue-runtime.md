@@ -1,12 +1,13 @@
 # 已训练 NNUE 的原生与网页运行时
 
-当前发布 `rapfi-calibrated-v1`，使用真实 Rapfi 教师数据训练，支持 15×15 自由五子棋。
+当前发布 `rapfi-v3-5ad5f4cf8772`，使用真实 Rapfi 教师数据训练，支持 15×15 自由五子棋。
 宽度为 mapping=64、channels=64、value_hidden=128、policy_hidden=32，
 权重为 102,109,456 字节（97.38 MiB），SHA-256 固定在 `models/web-model.json`。
 
 2026-09-21 增加 VCF/强制防守并比较修正 mate 监督的 v2 候选。
-v2 在同引擎配对对战中 5 胜、2 和、9 负，因此网页继续使用 v1，
+v2 在同引擎配对对战中 5 胜、2 和、9 负，因此网页当时继续使用 v1，
 搜索升级独立发布。详见 [战术搜索与本轮结果](tactical-search.md)。
+2026-09-21 经配对 arena 验收后，网页改用 NNUE v3（`rapfi-v3-5ad5f4cf8772`）。
 
 ## 实际对弈
 
@@ -22,8 +23,8 @@ v2 在同引擎配对对战中 5 胜、2 和、9 负，因此网页继续使用 
 
 原生入口：
 
-    build/dev/bin/gomoku-worker --model artifacts/models/rapfi-calibrated-v1/weights.gnn
-    build/dev/bin/pbrain-gomoku --model artifacts/models/rapfi-calibrated-v1/weights.gnn
+    build/dev/bin/gomoku-worker --model artifacts/models/rapfi-v3-5ad5f4cf8772/weights.gnn
+    build/dev/bin/pbrain-gomoku --model artifacts/models/rapfi-v3-5ad5f4cf8772/weights.gnn
 
 Windows 对应 `.exe`，64 位比赛程序名为 `pbrain-gomoku64.exe`。
 比赛入口只读取本地权重；不兼容规则或内存预算明确报错。
@@ -64,6 +65,6 @@ Pages 构建必须成功下载模型，失败不会发布无模型替代品。
 - WASM 即时成五、不兼容尺寸拒绝、损坏模型替换保持原模型，以及完整 NNUE 自对弈。
 - 浏览器资产下载、校验、缓存损坏恢复、取消旧 Worker、重新开始和真实网页人机回应。
 
-数值报告输出到 `artifacts/runtime/rapfi-calibrated-v1.json`，随模型 Release 保存。
+数值报告输出到 `artifacts/runtime/rapfi-v3-5ad5f4cf8772.json`，随模型 Release 保存。
 这是运行时验收，不是模型棋力领先基础引擎或达到 Gomocup 参赛水平的证明。
 未来发布新模型时必须一起更新模型固定清单、独立参考局面和验证报告。

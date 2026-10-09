@@ -1,6 +1,6 @@
 # 模型产物
 
-当前网页发布模型为 `rapfi-calibrated-v1`，由真实 Rapfi 教师数据蒸馏训练，
+当前网页发布模型为 `rapfi-v3-5ad5f4cf8772`，由真实 Rapfi 教师数据蒸馏训练，
 仅支持 15×15 自由五子棋。原生与 WASM 共享 C++ 增量推理实现。
 `web-model.json` 固定实际发布的模型 ID、规则、尺寸、字节数、SHA-256 与 Release URL。
 
