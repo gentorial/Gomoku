@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
-import { installModel, loadBrowserModel, parseModel } from "../src/model.js";
+import { installModel, loadBrowserModel, modelSupports, parseModel } from "../src/model.js";
 import { BrowserEngine } from "../src/index.js";
 import type { GomokuModule } from "../generated/gomoku-engine.mjs";
 
@@ -185,4 +185,12 @@ test("aborting a model load terminates its worker, ignores stale progress, and p
     },
   });
   assert.equal((await next).kind, "about");
+});
+
+test("freestyle weights also serve standard games on the same board size", () => {
+  const model = parseModel(manifest);
+  assert.ok(modelSupports(model, { size: 15, rule: "freestyle" }));
+  assert.ok(modelSupports(model, { size: 15, rule: "standard" }));
+  assert.ok(!modelSupports(model, { size: 20, rule: "freestyle" }));
+  assert.ok(!modelSupports({ ...model, rule: "standard" }, { size: 15, rule: "freestyle" }));
 });

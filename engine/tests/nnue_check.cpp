@@ -12,6 +12,9 @@ int main(int argc, char** argv) {
     try {
         if (argc != 3) throw std::invalid_argument("Usage: gomoku-nnue-check weights.gnn reference-vectors.json");
         auto model = NnueModel::load_file(argv[1]);
+        if (!model->supports(Position(model->size(), Rule::standard)) ||
+            model->supports(Position(model->size() == 15 ? 20 : 15, model->rule())))
+            throw std::runtime_error("Unexpected NNUE board/rule support");
         std::ifstream input(argv[2]);
         const auto reference = json::parse(input);
         if (reference.at("format") != "line-nnue-reference-v1") throw std::invalid_argument("Invalid reference format");

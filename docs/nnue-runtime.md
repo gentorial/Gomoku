@@ -1,6 +1,6 @@
 # 已训练 NNUE 的原生与网页运行时
 
-当前发布 `rapfi-v3-5ad5f4cf8772`，使用真实 Rapfi 教师数据训练，支持 15×15 自由五子棋。
+当前发布 `rapfi-v3-5ad5f4cf8772`，使用真实 Rapfi 教师数据训练，支持 15×15 自由五子棋，并复用于 15×15 标准五子棋。
 宽度为 mapping=64、channels=64、value_hidden=128、policy_hidden=32，
 权重为 102,109,456 字节（97.38 MiB），SHA-256 固定在 `models/web-model.json`。
 

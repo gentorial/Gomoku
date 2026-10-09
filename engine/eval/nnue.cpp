@@ -122,8 +122,10 @@ std::shared_ptr<const NnueModel> NnueModel::load_file(const std::string& path) {
         throw std::invalid_argument("Cannot read NNUE model");
     return load(bytes);
 }
+// The network has no rule input; five/overline adjudication lives in the rules
+// library and search. Freestyle weights therefore also serve standard games.
 bool NnueModel::supports(const Position& position) const {
-    return position.size() == size_ && position.rule() == rule_;
+    return position.size() == size_ && (position.rule() == rule_ || rule_ == Rule::freestyle);
 }
 
 struct NnueEvaluator::State {

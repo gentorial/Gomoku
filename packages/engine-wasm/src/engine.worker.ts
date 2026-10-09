@@ -1,6 +1,6 @@
 import { WorkerRequestSchema } from "@gomoku/contracts";
 import createGomokuModule from "../generated/gomoku-engine.mjs";
-import { loadBrowserModel, type BrowserModel } from "./model.js";
+import { loadBrowserModel, modelSupports, type BrowserModel } from "./model.js";
 
 // Vite copies this asset next to the worker bundle, including under a URL base.
 const wasmUrl = new URL("../generated/gomoku-engine.wasm", import.meta.url).href;
@@ -23,13 +23,8 @@ self.onmessage = (event: MessageEvent<{ request: unknown; modelManifestUrl?: str
           loadedModel = await loadBrowserModel(engine, event.data.modelManifestUrl, (state) => {
             self.postMessage({ type: "model-progress", id, ...state });
           });
-        if (
-          loadedModel.size !== request.position.size ||
-          loadedModel.rule !== request.position.rule
-        )
-          throw new Error(
-            "该 NNUE 仅支持 " + loadedModel.size + "×" + loadedModel.size + " " + loadedModel.rule,
-          );
+        if (!modelSupports(loadedModel, request.position))
+          throw new Error("该 NNUE 仅支持 " + loadedModel.size + "×" + loadedModel.size + " 棋盘");
       }
       // A loaded NNUE must never silently replace an explicitly selected baseline.
       const actual =

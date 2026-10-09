@@ -40,6 +40,13 @@ export function parseModel(value: unknown): BrowserModel {
   return model;
 }
 
+/** Mirrors NnueModel::supports: freestyle weights also serve standard games. */
+export function modelSupports(model: BrowserModel, position: { size: number; rule: string }) {
+  return (
+    model.size === position.size && (model.rule === position.rule || model.rule === "freestyle")
+  );
+}
+
 export function installModel(engine: GomokuModule, bytes: Uint8Array) {
   const pointer = engine._malloc(bytes.byteLength);
   if (!pointer) throw new Error("内存不足，无法加载 NNUE");

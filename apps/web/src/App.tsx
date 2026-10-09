@@ -146,7 +146,7 @@ function Settings({
   function update(patch: Partial<MatchConfig>) {
     setDraft((value) => {
       const next = { ...value, ...patch };
-      if (next.size !== 15 || next.rule !== "freestyle") next.evaluator = "handcrafted";
+      if (next.size !== 15) next.evaluator = "handcrafted";
       return next;
     });
   }
@@ -171,7 +171,7 @@ function Settings({
       </label>
     );
   }
-  const nnueSupported = draft.size === 15 && draft.rule === "freestyle";
+  const nnueSupported = draft.size === 15;
   return (
     <form
       onSubmit={(event) => {
@@ -222,7 +222,7 @@ function Settings({
                 ? "NNUE 权重尚未配置"
                 : nnueSupported
                   ? undefined
-                  : "NNUE 仅支持 15×15 自由五子棋",
+                  : "NNUE 仅支持 15×15 棋盘",
             },
             { value: "handcrafted", label: "基础" },
           ]}
