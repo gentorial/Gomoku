@@ -140,6 +140,7 @@ export type MatchConfig = z.infer<typeof MatchConfigSchema>;
 
 export type Color = z.infer<typeof ColorSchema>;
 export type Rule = z.infer<typeof RuleSchema>;
+export type BoardSize = z.infer<typeof BoardSizeSchema>;
 export type Move = z.infer<typeof MoveSchema>;
 export type Position = z.infer<typeof PositionSchema>;
 export type PositionResult = z.infer<typeof PositionResultSchema>;
@@ -156,3 +157,57 @@ export interface Engine {
   request(payload: WorkerPayload, signal?: AbortSignal): Promise<WorkerResult>;
   close(): void;
 }
+
+/** Online play over one WebSocket: rooms by code, random matching, resign and undo by consent. */
+export const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const RoomCodeSchema = z.string().regex(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/);
+export const PlayerNameSchema = z.string().trim().min(1).max(16);
+const Game = { rule: RuleSchema, size: BoardSizeSchema };
+
+export const OnlineClientMessageSchema = z.discriminatedUnion("type", [
+  // The token, if any, resumes a previous session (and its room) after a reconnect.
+  z
+    .object({
+      type: z.literal("hello"),
+      name: PlayerNameSchema,
+      token: z.string().max(64).optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal("create"), ...Game }).strict(),
+  z.object({ type: z.literal("join"), code: RoomCodeSchema }).strict(),
+  z.object({ type: z.literal("match"), ...Game }).strict(),
+  // Leaves the matching queue, or a room (resigning a game in progress).
+  z.object({ type: z.literal("leave") }).strict(),
+  z.object({ type: z.literal("move"), move: MoveSchema }).strict(),
+  z.object({ type: z.literal("resign") }).strict(),
+  // Asks to take back one's own last move (and the opponent's reply after it).
+  z.object({ type: z.literal("undo") }).strict(),
+  z.object({ type: z.literal("undoReply"), accept: z.boolean() }).strict(),
+]);
+
+export const OnlinePlayerSchema = z.object({ name: z.string(), connected: z.boolean() });
+export const OnlineRoomSchema = z.object({
+  code: RoomCodeSchema,
+  ...Game,
+  you: ColorSchema,
+  players: z.object({ black: OnlinePlayerSchema.nullable(), white: OnlinePlayerSchema.nullable() }),
+  moves: z.array(MoveSchema),
+  toMove: ColorSchema,
+  status: StatusSchema,
+  /** Why a finished game ended; null while it is playing or waiting for an opponent. */
+  ending: z.enum(["five", "draw", "resign"]).nullable(),
+  /** The color asking to take back moves, if a request is pending. */
+  undo: ColorSchema.nullable(),
+});
+
+export const OnlineServerMessageSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("welcome"), token: z.string() }),
+  z.object({ type: z.literal("lobby") }),
+  z.object({ type: z.literal("queued"), ...Game }),
+  z.object({ type: z.literal("room"), room: OnlineRoomSchema }),
+  z.object({ type: z.literal("error"), message: z.string() }),
+]);
+
+export type OnlineClientMessage = z.infer<typeof OnlineClientMessageSchema>;
+export type OnlineServerMessage = z.infer<typeof OnlineServerMessageSchema>;
+export type OnlineRoom = z.infer<typeof OnlineRoomSchema>;

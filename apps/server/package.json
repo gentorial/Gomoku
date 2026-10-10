@@ -11,7 +11,12 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@fastify/websocket": "11.2.0",
     "@gomoku/contracts": "workspace:*",
+    "@gomoku/engine-wasm": "workspace:*",
     "fastify": "5.12.5"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1"
   }
 }

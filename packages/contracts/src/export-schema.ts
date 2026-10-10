@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   GameSchema,
   MatchConfigSchema,
+  OnlineClientMessageSchema,
+  OnlineServerMessageSchema,
   WorkerRequestSchema,
   WorkerResponseSchema,
 } from "./index.js";
@@ -14,6 +16,8 @@ for (const [name, schema] of Object.entries({
   "worker-response": WorkerResponseSchema,
   game: GameSchema,
   "match-config": MatchConfigSchema,
+  "online-client": OnlineClientMessageSchema,
+  "online-server": OnlineServerMessageSchema,
 })) {
   await writeFile(
     new URL(name + ".json", destination),

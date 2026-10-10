@@ -15,6 +15,8 @@ if (withServer)
   ).catch(() => {
     throw new Error("Build the native engine first: pnpm engine:build");
   });
+// The local server also serves online play; point the web app at it unless overridden.
+if (withServer) process.env.GOMOKU_ONLINE_URL ??= "ws://127.0.0.1:3001/ws";
 await run("pnpm", ["build:packages"]);
 const children = [
   ...(withServer

@@ -12,6 +12,8 @@ export default defineConfig({
     __GOMOKU_MODEL_MANIFEST__: JSON.stringify(model ? base + "models/active.json" : null),
     // Boards the staged model was trained for; older manifests name one `size`.
     __GOMOKU_MODEL_SIZES__: JSON.stringify(model ? (model.sizes ?? [model.size]) : []),
+    // wss:// endpoint of the online play server; without it the 联机 mode is hidden.
+    __GOMOKU_ONLINE_URL__: JSON.stringify(process.env.GOMOKU_ONLINE_URL || null),
   },
   plugins: [react()],
   worker: { format: "es" },

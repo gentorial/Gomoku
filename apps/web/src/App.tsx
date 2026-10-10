@@ -20,9 +20,13 @@ import { BrowserEngine, type ModelProgress } from "@gomoku/engine-wasm";
 import type { Analysis, Color, MatchConfig, Rule } from "@gomoku/contracts";
 import { Board, colorName, pointName } from "./Board.js";
 import { MatchController, initialSnapshot, isHuman } from "./game/controller.js";
+import { OnlineGame } from "./Online.js";
+import { OnlineController, savedName, wasOnline } from "./online/controller.js";
 
 const modelAvailable = __GOMOKU_MODEL_MANIFEST__ !== null;
 const modelSizes = __GOMOKU_MODEL_SIZES__;
+const onlineUrl = __GOMOKU_ONLINE_URL__;
+type OnlineStart = (name: string, begin: (online: OnlineController) => void) => void;
 
 function IconButton({
   icon: Icon,
@@ -139,11 +143,17 @@ function Choice<T extends string | number>({
 function Settings({
   config,
   onStart,
+  onOnline,
 }: {
   config: MatchConfig;
   onStart: (config: MatchConfig) => void;
+  onOnline: OnlineStart;
 }) {
   const [draft, setDraft] = useState(config);
+  const [online, setOnline] = useState(false);
+  const [name, setName] = useState(savedName);
+  const [code, setCode] = useState("");
+  const named = name.trim().length > 0;
   function update(patch: Partial<MatchConfig>) {
     setDraft((value) => {
       const next = { ...value, ...patch };
@@ -177,18 +187,23 @@ function Settings({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        onStart(draft);
+        if (!online) onStart(draft);
+        else if (named) onOnline(name.trim(), (game) => game.create(draft.rule, draft.size));
       }}
     >
-      <Choice
+      <Choice<MatchConfig["mode"] | "online">
         label="模式"
-        value={draft.mode}
+        value={online ? "online" : draft.mode}
         options={[
           { value: "human-human", label: "人人" },
           { value: "human-ai", label: "人机" },
           { value: "ai-ai", label: "机机" },
+          ...(onlineUrl ? [{ value: "online" as const, label: "联机" }] : []),
         ]}
-        onChange={(mode) => update({ mode })}
+        onChange={(mode) => {
+          setOnline(mode === "online");
+          if (mode !== "online") update({ mode });
+        }}
       />
       <Choice
         label="规则"
@@ -210,7 +225,7 @@ function Settings({
         ]}
         onChange={(size) => update({ size })}
       />
-      {draft.mode !== "human-human" && (
+      {!online && draft.mode !== "human-human" && (
         <Choice
           label="AI"
           value={draft.evaluator}
@@ -232,7 +247,7 @@ function Settings({
           onChange={(evaluator) => update({ evaluator })}
         />
       )}
-      {draft.mode === "human-ai" && (
+      {!online && draft.mode === "human-ai" && (
         <Choice
           label="执子"
           value={draft.humanColor}
@@ -248,16 +263,64 @@ function Settings({
           onChange={(humanColor) => update({ humanColor })}
         />
       )}
-      {draft.mode === "human-ai" && timeControl(draft.humanColor === "black" ? "white" : "black")}
-      {draft.mode === "ai-ai" && (
+      {!online &&
+        draft.mode === "human-ai" &&
+        timeControl(draft.humanColor === "black" ? "white" : "black")}
+      {!online && draft.mode === "ai-ai" && (
         <>
           {timeControl("black")}
           {timeControl("white")}
         </>
       )}
+      {online && (
+        <>
+          <label className="setting-row">
+            <span className="setting-label">昵称</span>
+            <input
+              className="text-input"
+              value={name}
+              maxLength={16}
+              autoComplete="nickname"
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+          <div className="setting-row">
+            <span className="setting-label">房间号</span>
+            <span className="join-row">
+              <input
+                className="text-input"
+                aria-label="房间号"
+                value={code}
+                maxLength={6}
+                placeholder="输入好友的房间号"
+                autoCapitalize="characters"
+                onChange={(event) => setCode(event.target.value.toUpperCase())}
+              />
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={!named || code.trim().length !== 6}
+                onClick={() => onOnline(name.trim(), (game) => game.join(code))}
+              >
+                加入
+              </button>
+            </span>
+          </div>
+        </>
+      )}
       <div className="settings-actions">
-        <button type="submit" className="primary-button">
-          开始对局
+        {online && (
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={!named}
+            onClick={() => onOnline(name.trim(), (game) => game.match(draft.rule, draft.size))}
+          >
+            随机匹配
+          </button>
+        )}
+        <button type="submit" className="primary-button" disabled={online && !named}>
+          {online ? "创建房间" : "开始对局"}
         </button>
       </div>
     </form>
@@ -293,6 +356,25 @@ export function App() {
   const [controller, setController] = useState<MatchController | null>(null);
   const [panel, setPanel] = useState<"settings" | "analysis" | null>(null);
   const [modelProgress, setModelProgress] = useState<ModelProgress | null>(null);
+  // A reload while in an online room or queue reconnects to it with the stored token.
+  const [online, setOnline] = useState<OnlineController | null>(() =>
+    onlineUrl && wasOnline() ? new OnlineController(onlineUrl, savedName() || "玩家") : null,
+  );
+  useEffect(() => () => online?.dispose(), [online]);
+  const onlinePhase = useSyncExternalStore(
+    online?.subscribe ?? noSubscribe,
+    () => online?.getSnapshot().phase ?? null,
+  );
+  // Back in the lobby (left, or the room expired): return to local play.
+  useEffect(() => {
+    if (onlinePhase === "lobby") setOnline(null);
+  }, [onlinePhase]);
+  const startOnline: OnlineStart = (name, begin) => {
+    const game = new OnlineController(onlineUrl!, name);
+    begin(game);
+    setPanel(null);
+    setOnline(game);
+  };
   // Each effect owns its engine; cleanup also works during StrictMode's remount.
   useEffect(() => {
     let disposed = false;
@@ -374,6 +456,14 @@ export function App() {
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  if (online)
+    return (
+      <main className="play-page">
+        <section className="game" aria-label="联机对弈">
+          <OnlineGame online={online} onLeave={() => setOnline(null)} />
+        </section>
+      </main>
+    );
   return (
     <main className="play-page">
       <section className="game" aria-label="五子棋对弈">
@@ -464,6 +554,10 @@ export function App() {
             onStart={(next) => {
               setPanel(null);
               void controller?.start(next);
+            }}
+            onOnline={(name, begin) => {
+              if (config.mode === "ai-ai") controller?.pause();
+              startOnline(name, begin);
             }}
           />
         </Panel>

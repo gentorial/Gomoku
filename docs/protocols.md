@@ -59,6 +59,10 @@ score.perspective 固定为 side_to_move，value 是引擎分数，不是胜率�
 kind=mate 使用内部大分值编码距离；它来自当前选择性搜索树，不是完备求解证明。
 终局 bestMove=null。状态为 playing、black_win、white_win 或 draw。
 
+## 联机对战
+
+浏览器与服务端之间的联机消息（房间、匹配、落子、认输、悔棋）见 [联机对战](online.md)。
+
 ## 浏览器 WASM 与本地对局
 
 WASM 的 gomoku_request 接收/返回同样的 JSON 信封，支持 about、inspect、play、analyze。

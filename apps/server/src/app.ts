@@ -1,11 +1,20 @@
 import Fastify from "fastify";
 import { CreateGameSchema, PlaySchema, VersionSchema } from "@gomoku/contracts";
 import { ApiProblem, GameService } from "./games.js";
+import type { OnlineService } from "./online.js";
+import { defaultOrigins, registerOnline } from "./online-route.js";
 import { EngineError, WorkerPool, type Engine } from "./worker-pool.js";
 
-export function createApp(engine: Engine = new WorkerPool(), logger = false) {
+export type AppOptions = { online?: OnlineService; origins?: readonly string[] };
+
+/** AI game routes need a search engine; online play needs only its rules referee. */
+export function createApp(
+  engine: Engine | null = new WorkerPool(),
+  logger = false,
+  options: AppOptions = {},
+) {
   const app = Fastify({ logger, bodyLimit: 65536, forceCloseConnections: true });
-  const games = new GameService(engine);
+  if (options.online) registerOnline(app, options.online, options.origins ?? defaultOrigins);
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ApiProblem)
       return reply.code(error.status).send({ error: { code: error.code, message: error.message } });
@@ -34,10 +43,13 @@ export function createApp(engine: Engine = new WorkerPool(), logger = false) {
       },
     });
   });
-  app.get("/api/health", async () => {
-    const result = await engine.request({ method: "about" });
-    return { status: "ok", engine: result };
-  });
+  app.get("/api/health", async () => ({
+    status: "ok",
+    ...(engine ? { engine: await engine.request({ method: "about" }) } : {}),
+    ...(options.online ? { online: options.online.size } : {}),
+  }));
+  if (!engine) return app;
+  const games = new GameService(engine);
   app.post("/api/games", async (request, reply) => {
     const game = await games.create(CreateGameSchema.parse(request.body));
     return reply.code(201).send(game);
