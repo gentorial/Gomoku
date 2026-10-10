@@ -14,7 +14,7 @@ from .teacher_data import MATE_THRESHOLD, multipv_policy, opening_key
 
 def training_openings(corpora, output, count=256, seed=42):
     """Freeze training-only groups; the parent opening stays attached to PV leaves."""
-    choices = {}
+    choices, layouts = {}, set()
     for root in corpora:
         for path in sorted(Path(root).glob("job-*.annotations.jsonl")):
             seen_games = set()
@@ -24,6 +24,7 @@ def training_openings(corpora, output, count=256, seed=42):
                     if sample["gameId"] in seen_games:
                         continue
                     seen_games.add(sample["gameId"])
+                    layouts.add((sample["position"]["size"], sample["position"]["rule"]))
                     group = sample["openingId"]
                     # Reserve the first 20% for holdouts, even if a campaign
                     # later uses smaller validation/test fractions.
@@ -36,7 +37,10 @@ def training_openings(corpora, output, count=256, seed=42):
     choices = sorted(choices.values(), key=lambda x: digest([seed, x["id"], "selfplay"]))
     if len(choices) < count:
         raise ValueError(f"Need {count} independent training openings; found {len(choices)}")
-    result = {"format": "gomoku-openings-v1", "size": 15, "rule": "freestyle",
+    if len(layouts) != 1:
+        raise ValueError("Training openings mix board sizes or rules")
+    (size, rule), = layouts
+    result = {"format": "gomoku-openings-v1", "size": size, "rule": rule,
               "split": "train", "seed": seed, "openings": choices[:count]}
     write_json(output, result)
     return result
@@ -104,7 +108,7 @@ def mine_game(index, opening, *, engine, model, teacher_executable, teacher, set
             if record.get("miningIdentity") != identity:
                 raise ValueError("Self-play record belongs to another mining run")
         else:
-            position = {"size": 15, "rule": "freestyle", "moves": list(opening["moves"])}
+            position = {"size": settings["size"], "rule": settings["rule"], "moves": list(opening["moves"])}
             state = worker.request("inspect", position=position)
             if state["status"] != "playing":
                 raise ValueError("Self-play opening is terminal")
@@ -121,8 +125,8 @@ def mine_game(index, opening, *, engine, model, teacher_executable, teacher, set
                       "openingId": opening["id"], "analyses": analyses,
                       "miningIdentity": identity, "gameId": digest([identity, index])}
             write_json(game_path, record)
-        client = stack.enter_context(TeacherClient(teacher_executable, nodes=settings["teacherNodes"],
-                                                  multipv=settings["multipv"]))
+        client = stack.enter_context(TeacherClient(teacher_executable, size=record["size"], rule=record["rule"],
+                                                  nodes=settings["teacherNodes"], multipv=settings["multipv"]))
         samples, reports = [], []
         for item in choose_positions(record, settings["roots"], settings["leaves"]):
             state = worker.request("inspect", position=item["position"])
@@ -165,17 +169,18 @@ def mine(openings, output, model, teacher_executable, *, engine=None, workers=2,
     root = Path(output).resolve()
     settings = {"timeMs": time_ms, "depth": depth, "maxPlies": max_plies,
                 "roots": roots, "leaves": leaves, "teacherNodes": teacher_nodes, "multipv": multipv}
-    if not (1 <= workers <= 32 and 0 <= time_ms <= 10000 and 1 <= depth <= 12 and
-            7 <= max_plies <= 225 and roots >= 1 and leaves >= 0 and teacher_nodes >= 1 and 1 <= multipv <= 32):
-        raise ValueError("Invalid mining settings")
     opening_set = read_json(openings)
-    if (opening_set.get("format"), opening_set.get("size"), opening_set.get("rule"), opening_set.get("split")) != (
-            "gomoku-openings-v1", 15, "freestyle", "train"):
+    size, rule = opening_set.get("size"), opening_set.get("rule")
+    if ((opening_set.get("format"), opening_set.get("split")) != ("gomoku-openings-v1", "train")
+            or size not in (15, 20) or rule not in ("freestyle", "standard")):
         raise ValueError("Mining requires a frozen training-only opening set")
+    if not (1 <= workers <= 32 and 0 <= time_ms <= 10000 and 1 <= depth <= 12 and
+            7 <= max_plies <= size * size and roots >= 1 and leaves >= 0 and teacher_nodes >= 1 and 1 <= multipv <= 32):
+        raise ValueError("Invalid mining settings")
     if not opening_set["openings"] or len({o["id"] for o in opening_set["openings"]}) != len(opening_set["openings"]):
         raise ValueError("Mining openings must be nonempty and unique")
     for opening in opening_set["openings"]:
-        if (opening["id"] != opening_key(opening["moves"], 15, "freestyle") or
+        if (opening["id"] != opening_key(opening["moves"], size, rule) or
             int(digest([opening_set["seed"], opening["id"]])[:16], 16) / 2**64 < 0.2):
             raise ValueError("Mining opening is not a training group")
     teacher = identify(teacher_executable)
@@ -193,7 +198,7 @@ def mine(openings, output, model, teacher_executable, *, engine=None, workers=2,
         try:
             pending = [pool.submit(mine_game, i, opening, engine=engine, model=model,
                                    teacher_executable=teacher_executable, teacher=teacher,
-                                   settings=settings, root=root, identity=identity)
+                                   settings={**settings, "size": size, "rule": rule}, root=root, identity=identity)
                        for i, opening in enumerate(opening_set["openings"])]
             for future in as_completed(pending):
                 result = future.result()

@@ -57,13 +57,14 @@ def frozen_sources(path, sources=None):
 def holdout_openings(sources, output, *, split, count, excluded=(), seed=42):
     if Path(output).exists():
         return read_json(output)
-    choices = {}
+    choices, layouts = {}, set()
     seen_games = set()
     for path in sources:
         for sample in source_records(path):
             if sample["gameId"] in seen_games:
                 continue
             seen_games.add(sample["gameId"])
+            layouts.add((sample["position"]["size"], sample["position"]["rule"]))
             group = sample["openingId"]
             value = int(digest([seed, group])[:16], 16) / 2**64
             belongs = value < .1 if split == "test" else .1 <= value < .2
@@ -73,7 +74,10 @@ def holdout_openings(sources, output, *, split, count, excluded=(), seed=42):
     choices = sorted(choices.values(), key=lambda o: digest([seed, o["id"], split, "arena-v3"]))
     if len(choices) < count:
         raise ValueError(f"Need {count} balanced {split} opening groups; found {len(choices)}")
-    result = {"format": "gomoku-openings-v1", "size": 15, "rule": "freestyle",
+    if len(layouts) != 1:
+        raise ValueError("Holdout openings mix board sizes or rules")
+    (size, rule), = layouts
+    result = {"format": "gomoku-openings-v1", "size": size, "rule": rule,
               "split": split, "seed": seed, "openings": choices[:count]}
     write_json(output, result)
     return result
@@ -116,7 +120,7 @@ def run_arena(model, baseline, openings, output, time_ms, engine, *, workers=4):
     report = {"format": "gomoku-arena-v1", "protocol": "worker",
               "engines": {"a": {"executable": file_identity(engine), "model": file_identity(model)},
                           "b": {"executable": file_identity(engine), "model": file_identity(baseline)}},
-              "openings": file_identity(openings), "size": 15, "rule": "freestyle",
+              "openings": file_identity(openings), "size": opening_set["size"], "rule": opening_set["rule"],
               "limits": {"timeMs": time_ms, "maxDepth": 12}}
     old_games = []
     if Path(output).exists():
@@ -132,7 +136,7 @@ def run_arena(model, baseline, openings, output, time_ms, engine, *, workers=4):
         print(json.dumps({"event": "campaign-arena", "output": str(output), **report["summary"]}), flush=True)
 
     games = worker_match(engine, engine, opening_set["openings"], model_a=model, model_b=baseline,
-                         time_ms=time_ms, depth=12, on_game=save, completed=old_games, workers=workers)
+                         size=opening_set["size"], rule=opening_set["rule"], time_ms=time_ms, depth=12, on_game=save, completed=old_games, workers=workers)
     save(games)
     return report
 
@@ -183,6 +187,12 @@ def campaign(root, *, general_config, multipv_config, warmup_config, training_co
         try:
             teacher_exe, general = load_teacher(general_config)
             _, multipv = load_teacher(multipv_config)
+            layout = {"size": general.size, "rule": general.rule}
+            if (multipv.size, multipv.rule) != (general.size, general.rule):
+                raise ValueError("General and MultiPV teachers must use the same board and rule")
+            if publish and (general.size, general.rule) != (15, "freestyle"):
+                # The website pins a single model; another board needs its own slot first.
+                raise ValueError("Only 15x15 freestyle campaigns can replace the website model")
             mining_root = ROOT / "data/teachers" / (root.name + "-relabel")
             general_root = Path(general.output)
             warmup, training = load_config(warmup_config), load_config(training_config)
@@ -204,7 +214,7 @@ def campaign(root, *, general_config, multipv_config, warmup_config, training_co
             holdout_openings(general_sources, root / "development-openings.json", split="validation", count=16, excluded=excluded)
             holdout_openings(general_sources, root / "promotion-openings.json", split="test", count=32, excluded=excluded)
             status("prepare-warmup", sourceFiles=len(sources))
-            prepare(sources, Path(warmup.data.manifest).parent, resume=True)
+            prepare(sources, Path(warmup.data.manifest).parent, resume=True, **layout)
 
             # Imports initialize the requested accelerator only when useful work
             # is ready. Warmup reuses the full network and becomes initialization
@@ -236,7 +246,7 @@ def campaign(root, *, general_config, multipv_config, warmup_config, training_co
                 all_sources.extend(teacher_inputs(corpus["path"]))
             sources = frozen_sources(root / "training-sources.json", all_sources)
             status("prepare-million", sourceFiles=len(sources))
-            dataset = prepare(sources, Path(training.data.manifest).parent, resume=True)
+            dataset = prepare(sources, Path(training.data.manifest).parent, resume=True, **layout)
             if sum(dataset["counts"].values()) < minimum_unique:
                 raise ValueError("Native-validated final dataset is smaller than the promised unique-position target")
             status("train-main", datasetCounts=dataset["counts"], steps=training.run.steps,

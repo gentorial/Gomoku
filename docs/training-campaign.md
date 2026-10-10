@@ -5,6 +5,22 @@
 代码入口为 `training/src/gomoku_training/campaign.py`。采集和训练未完成时，
 不能把运行配置中的目标数量当成已取得的结果。
 
+棋盘尺寸与规则取自普通教师配置，MultiPV 配置必须一致；开局冻结、数据准备、
+自对弈回标与 arena 都沿用这一组合，混入其他尺寸的数据会直接报错。
+网页只固定一个模型，非 15×15 自由规则的整轮不允许 `--publish`。
+20×20 一轮使用 `tools/configs/rapfi-20-*.toml` 与 `training/configs/rapfi-20*.toml`，
+以 v3 权重（仅改尺寸字段的副本）初始化并作为晋级对手：
+
+```powershell
+.venv/Scripts/python.exe -u -m gomoku_training.campaign --output artifacts/campaigns/rapfi-20-v1 `
+  --general-config tools/configs/rapfi-20-general.toml --multipv-config tools/configs/rapfi-20-multipv.toml `
+  --warmup-config training/configs/rapfi-20-warmup.toml --training-config training/configs/rapfi-20.toml `
+  --baseline-checkpoint artifacts/models/rapfi-v3-size20/best.pt --baseline-model artifacts/models/rapfi-v3-size20/weights.gnn
+```
+
+Rapfi 自对弈偶尔在任务中途退出；同一任务连续三次失败会结束该次生成，
+已完成任务保留，以 `--resume` 重新运行即可继续。
+
 ## 五项改动
 
 1. **统一 value 目标。** 模型输出的价值为 `u = P(win) - P(loss)`。
