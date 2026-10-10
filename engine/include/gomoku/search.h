@@ -4,6 +4,7 @@
 #include <chrono>
 #include <functional>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace gomoku {
@@ -31,6 +32,10 @@ struct SearchOptions {
     double lmr_base = 0.5;
     double lmr_divisor = 2.0;
 };
+// Applies one "name=value" override (as passed to the worker's --search flag).
+// Names are the SearchOptions fields; booleans are 0/1. Throws on unknown names
+// or out-of-range values.
+void set_search_option(SearchOptions& options, std::string_view assignment);
 struct SearchStats {
     std::uint64_t tt_probes = 0, tt_hits = 0, tt_cutoffs = 0;
     std::uint64_t evaluator_pushes = 0, pvs_researches = 0;

@@ -18,9 +18,15 @@ void emit(const std::string& id, const json& result, bool ok = true) {
 
 int main(int argc, char** argv) {
     std::shared_ptr<const NnueModel> model;
+    SearchOptions options;
     try {
-        if (argc == 3 && std::string_view(argv[1]) == "--model") model = NnueModel::load_file(argv[2]);
-        else if (argc != 1) throw std::invalid_argument("Usage: gomoku-worker [--model weights.gnn]");
+        for (int i = 1; i < argc; i += 2) {
+            const std::string_view flag = argv[i];
+            if (i + 1 >= argc || (flag != "--model" && flag != "--search"))
+                throw std::invalid_argument("Usage: gomoku-worker [--model weights.gnn] [--search name=value]...");
+            if (flag == "--model") model = NnueModel::load_file(argv[i + 1]);
+            else set_search_option(options, argv[i + 1]);
+        }
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;
@@ -59,7 +65,7 @@ int main(int argc, char** argv) {
             busy = true;
             analysis = std::thread([&, position, limits, id, evaluator = std::move(evaluator)] {
                 try {
-                    const auto result = search(position, *evaluator, limits, cancelled);
+                    const auto result = search(position, *evaluator, limits, cancelled, {}, options);
                     busy = false;
                     emit(id, analysis_json(result, evaluator->name()));
                 } catch (const std::exception& error) {

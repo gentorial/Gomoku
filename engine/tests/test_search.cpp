@@ -108,6 +108,19 @@ int main() {
         }
         require(reductions && reduced_nodes < full_nodes, "LMR must reduce moves and save nodes at equal depth");
 
+        // Worker --search overrides set the named field and reject anything else.
+        SearchOptions tuned;
+        for (const char* option : {"lmr_divisor=1.25", "lmr_min_moves=2", "threat_filter=0", "vcf_node_limit=0"})
+            set_search_option(tuned, option);
+        require(tuned.lmr_divisor == 1.25 && tuned.lmr_min_moves == 2 && !tuned.threat_filter &&
+                tuned.vcf_node_limit == 0 && tuned.lmr, "search options must update only the named fields");
+        for (const char* option : {"lmr", "=1", "lmr=2", "lmr_min_depth=1.5", "lmr_divisor=0", "lmr_base=-1",
+                                   "unknown=1", "lmr_base=1x", "table_entries=0"}) {
+            bool rejected = false;
+            try { set_search_option(tuned, option); } catch (const std::invalid_argument&) { rejected = true; }
+            require(rejected, "invalid search options must be rejected");
+        }
+
         Position opening;
         opening.play({7, 7});
         CheckedEvaluator evaluator;

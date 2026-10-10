@@ -13,7 +13,7 @@ from .rapfi import write_json
 
 def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
                  size=15, rule="freestyle", time_ms=300, depth=8, max_nodes=None, on_game=None, completed=(),
-                 workers=1, stop_when=None):
+                 workers=1, stop_when=None, search_a=(), search_b=()):
     """Each fixed opening is played twice, swapping engines, with no adjudication.
 
     Per-move analysis and complete records make failures and search budgets
@@ -22,6 +22,7 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
     equal-speed networks can be compared with one game per core; time_ms then
     only caps a runaway search. Once stop_when(published games) is true, no new
     opening starts; pairs already in progress still finish both colors.
+    search_a/search_b are "name=value" search option overrides for each engine.
     """
     if not openings or len({item["id"] for item in openings}) != len(openings):
         raise ValueError("Need nonempty openings with unique ids")
@@ -57,7 +58,7 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
 
     def lane():
         # Each lane owns its referee and both engines; only finished records are shared.
-        with Worker() as referee, Worker(engine_a, model_a) as a, Worker(engine_b, model_b) as b:
+        with Worker() as referee, Worker(engine_a, model_a, search_a) as a, Worker(engine_b, model_b, search_b) as b:
             while not stopped.is_set() and not done.is_set():
                 try:
                     opening = queue.get_nowait()
@@ -254,6 +255,10 @@ def main():
                         help="Stop once a logistic-Elo SPRT accepts ELO0 or ELO1 for engine A")
     parser.add_argument("--sprt-alpha", type=float, default=0.05)
     parser.add_argument("--sprt-beta", type=float, default=0.05)
+    parser.add_argument("--search-a", action="append", default=[], metavar="NAME=VALUE",
+                        help="Search option override for engine A (repeatable)")
+    parser.add_argument("--search-b", action="append", default=[], metavar="NAME=VALUE",
+                        help="Search option override for engine B (repeatable)")
     parser.add_argument("--output", type=Path, default=Path("artifacts/arena.json"))
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--workers", type=int, default=1, help="Concurrent opening pairs for --protocol worker")
@@ -270,8 +275,10 @@ def main():
             parser.error("Opening set must match the requested board size and rule")
         engine_a, engine_b = args.engine_a or binary(), args.engine_b or binary()
         report = {"format": "gomoku-arena-v1", "protocol": "worker",
-                  "engines": {"a": {"executable": identity(engine_a), "model": identity(args.model_a)},
-                              "b": {"executable": identity(engine_b), "model": identity(args.model_b)}},
+                  "engines": {"a": {"executable": identity(engine_a), "model": identity(args.model_a),
+                                    **({"search": args.search_a} if args.search_a else {})},
+                              "b": {"executable": identity(engine_b), "model": identity(args.model_b),
+                                    **({"search": args.search_b} if args.search_b else {})}},
                   "openings": identity(args.openings), "size": args.size, "rule": args.rule,
                   "limits": {"timeMs": args.time_ms, "maxDepth": args.depth,
                              **({"maxNodes": args.max_nodes} if args.max_nodes else {})},
@@ -301,7 +308,7 @@ def main():
                          model_b=args.model_b, size=args.size, rule=args.rule,
                          time_ms=args.time_ms, depth=args.depth, max_nodes=args.max_nodes, on_game=save,
                          completed=completed, stop_when=(lambda games: test(games)["decision"] is not None)
-                         if test else None,
+                         if test else None, search_a=args.search_a, search_b=args.search_b,
                          workers=args.workers)
             save(results)
         except (ValueError, RuntimeError, TimeoutError, OSError) as error:
@@ -309,8 +316,8 @@ def main():
     else:
         if args.workers != 1:
             parser.error("Parallel arena currently requires --protocol worker")
-        if args.openings or args.model_a or args.model_b or args.max_nodes or args.sprt:
-            parser.error("Models, fixed openings, node budgets and SPRT require --protocol worker")
+        if args.openings or args.model_a or args.model_b or args.max_nodes or args.sprt or args.search_a or args.search_b:
+            parser.error("Models, fixed openings, node budgets, SPRT and search options require --protocol worker")
         if args.games < 2 or args.games % 2:
             parser.error("--games must be a positive even number for paired colors")
         results = match(args.engine_a or binary("pbrain-gomoku"),
