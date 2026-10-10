@@ -12,16 +12,23 @@ from .rapfi import write_json
 
 
 def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
-                 size=15, rule="freestyle", time_ms=300, depth=8, on_game=None, completed=(), workers=1):
+                 size=15, rule="freestyle", time_ms=300, depth=8, max_nodes=None, on_game=None, completed=(),
+                 workers=1, stop_when=None):
     """Each fixed opening is played twice, swapping engines, with no adjudication.
 
     Per-move analysis and complete records make failures and search budgets
     inspectable. This small comparison does not estimate an Elo rating.
+    A node budget makes every move independent of CPU load and core speed, so
+    equal-speed networks can be compared with one game per core; time_ms then
+    only caps a runaway search. Once stop_when(published games) is true, no new
+    opening starts; pairs already in progress still finish both colors.
     """
     if not openings or len({item["id"] for item in openings}) != len(openings):
         raise ValueError("Need nonempty openings with unique ids")
-    if not 0 <= time_ms <= 10000 or not 1 <= depth <= 12:
+    if not 0 <= time_ms <= 10000 or not 1 <= depth <= 12 or (
+            max_nodes is not None and (type(max_nodes) is not int or not 1 <= max_nodes <= 10_000_000)):
         raise ValueError("Invalid arena search limits")
+    limits = {"timeMs": time_ms, "maxDepth": depth, **({"maxNodes": max_nodes} if max_nodes else {})}
     if type(workers) is not int or workers < 1:
         raise ValueError("Arena workers must be a positive integer")
     completed = list(completed)
@@ -32,8 +39,10 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
     results = dict(zip(previous, completed))
     finished = set(previous)
     pending = [o for o in openings if any((o["id"], c) not in finished for c in ("black", "white"))]
-    if not pending:
-        return [results[key] for key in expected]
+    played = lambda: [results[key] for key in expected if key in results]
+    done = Event()
+    if not pending or (stop_when is not None and stop_when(played())):
+        return played()
     # Validate all openings before publishing any game, including in parallel runs.
     with Worker() as referee:
         for opening in openings:
@@ -49,7 +58,7 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
     def lane():
         # Each lane owns its referee and both engines; only finished records are shared.
         with Worker() as referee, Worker(engine_a, model_a) as a, Worker(engine_b, model_b) as b:
-            while not stopped.is_set():
+            while not stopped.is_set() and not done.is_set():
                 try:
                     opening = queue.get_nowait()
                 except Empty:
@@ -72,7 +81,7 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
                             analysis = player.request(
                                 "analyze", position=position,
                                 evaluator="nnue" if selected_model is not None else "handcrafted",
-                                limits={"timeMs": time_ms, "maxDepth": depth},
+                                limits=limits,
                             )
                             if selected_model is not None and analysis.get("evaluator") != "line11-nnue-v1":
                                 raise RuntimeError("Arena silently fell back from the requested NNUE")
@@ -94,7 +103,9 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
                             return
                         results[key] = game
                         if on_game is not None:
-                            on_game([results[k] for k in expected if k in results])
+                            on_game(played())
+                        if stop_when is not None and stop_when(played()):
+                            done.set()
 
     if concurrency == 1:
         lane()
@@ -109,7 +120,7 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
                 for future in futures:
                     future.cancel()
                 raise
-    return [results[key] for key in expected]
+    return played()
 
 
 def identity(path):
@@ -146,6 +157,53 @@ def paired_summary(results):
     p = sum(math.comb(n, k) for k in range(wins, n + 1)) / 2**n if n else 1.0
     return {"pairs": len(scores), "winningPairs": wins, "losingPairs": losses,
             "tiedPairs": len(scores) - n, "oneSidedSignP": p}
+
+
+def logistic_score(elo):
+    return 1 / (1 + 10 ** (-elo / 400))
+
+
+def sprt(results, elo0, elo1, alpha=0.05, beta=0.05):
+    """Sequential test of logistic Elo elo0 against elo1 for engine A.
+
+    Color-swapped opening pairs are the unit: their summed score falls into five
+    classes (pentanomial). The log-likelihood ratio uses the usual normal (GSPRT)
+    approximation. The LLR uses a Jeffreys prior (half a pair per class), so a
+    handful of one-sided pairs cannot decide alone and a one-sided run still
+    has a finite variance; the reported score and Elo use the raw pairs.
+    H1 means A is at least about elo1 stronger; H0 means A is not elo1 stronger
+    than elo0 (with elo0=0, no gain).
+    """
+    if not elo0 < elo1 or not 0 < alpha < 0.5 or not 0 < beta < 0.5:
+        raise ValueError("SPRT needs elo0 < elo1 and error rates in (0, 0.5)")
+    pairs = {}
+    for game in results:
+        pairs.setdefault(game["openingId"], {})[game["aColor"]] = game["scoreA"]
+    counts = [0] * 5
+    for colors in pairs.values():
+        if set(colors) == {"black", "white"}:
+            counts[round(2 * sum(colors.values()))] += 1
+    n = sum(counts)
+    lower, upper = math.log(beta / (1 - alpha)), math.log((1 - beta) / alpha)
+    result = {"elo0": elo0, "elo1": elo1, "alpha": alpha, "beta": beta, "pairs": n,
+              "pentanomial": counts, "bounds": [lower, upper], "llr": 0.0, "decision": None}
+    if not n:
+        return result
+    def moments(weights):
+        total = sum(weights)
+        mean = sum(w * k / 4 for k, w in enumerate(weights)) / total
+        return mean, sum(w * (k / 4 - mean) ** 2 for k, w in enumerate(weights)) / total
+
+    mean, variance = moments([c + 0.5 for c in counts])
+    s0, s1 = logistic_score(elo0), logistic_score(elo1)
+    llr = n * (s1 - s0) * (2 * mean - s0 - s1) / (2 * variance)
+    # Pair scores are per-game averages; their spread already includes pairing.
+    score, spread = moments(counts)
+    margin = 1.96 * math.sqrt(spread / n)
+    elo = lambda s: -400 * math.log10(1 / min(max(s, 1e-6), 1 - 1e-6) - 1)
+    result.update(llr=llr, decision="H1" if llr >= upper else "H0" if llr <= lower else None,
+                  score=score, elo=elo(score), eloInterval95=[elo(score - margin), elo(score + margin)])
+    return result
 
 
 def match(engine_a, engine_b, games=2, size=15, rule="freestyle", time_ms=20):
@@ -189,11 +247,19 @@ def main():
     parser.add_argument("--games", type=int, default=2)
     parser.add_argument("--size", type=int, choices=[15, 20], default=15)
     parser.add_argument("--rule", choices=["freestyle", "standard"], default="freestyle")
-    parser.add_argument("--time-ms", type=int, default=20)
+    parser.add_argument("--time-ms", type=int, help="Per-move time; with --max-nodes it is only a safety cap "
+                        "(default 20, or 10000 with --max-nodes)")
+    parser.add_argument("--max-nodes", type=int, help="Per-move node budget; makes results independent of CPU load")
+    parser.add_argument("--sprt", type=float, nargs=2, metavar=("ELO0", "ELO1"),
+                        help="Stop once a logistic-Elo SPRT accepts ELO0 or ELO1 for engine A")
+    parser.add_argument("--sprt-alpha", type=float, default=0.05)
+    parser.add_argument("--sprt-beta", type=float, default=0.05)
     parser.add_argument("--output", type=Path, default=Path("artifacts/arena.json"))
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--workers", type=int, default=1, help="Concurrent opening pairs for --protocol worker")
     args = parser.parse_args()
+    if args.time_ms is None:
+        args.time_ms = 10000 if args.max_nodes else 20
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.protocol == "worker":
         if args.openings is None:
@@ -207,7 +273,13 @@ def main():
                   "engines": {"a": {"executable": identity(engine_a), "model": identity(args.model_a)},
                               "b": {"executable": identity(engine_b), "model": identity(args.model_b)}},
                   "openings": identity(args.openings), "size": args.size, "rule": args.rule,
-                  "limits": {"timeMs": args.time_ms, "maxDepth": args.depth}}
+                  "limits": {"timeMs": args.time_ms, "maxDepth": args.depth,
+                             **({"maxNodes": args.max_nodes} if args.max_nodes else {})},
+                  **({"sprtTest": {"elo0": args.sprt[0], "elo1": args.sprt[1], "alpha": args.sprt_alpha,
+                                   "beta": args.sprt_beta}} if args.sprt else {})}
+        test = (lambda games: sprt(games, *args.sprt, args.sprt_alpha, args.sprt_beta)) if args.sprt else None
+        if test:
+            test([])  # Reject invalid hypotheses before any game.
 
         completed = []
         if args.output.exists():
@@ -217,6 +289,8 @@ def main():
             completed = old["games"]
 
         def save(results):
+            if test:
+                report["sprt"] = test(results)
             report.update(summary=summary(results), paired=paired_summary(results), games=results,
                           execution={"requestedWorkers": args.workers, "unit": "opening-pair"})
             write_json(args.output, report)
@@ -225,7 +299,9 @@ def main():
         try:
             results = worker_match(engine_a, engine_b, opening_set["openings"], model_a=args.model_a,
                          model_b=args.model_b, size=args.size, rule=args.rule,
-                         time_ms=args.time_ms, depth=args.depth, on_game=save, completed=completed,
+                         time_ms=args.time_ms, depth=args.depth, max_nodes=args.max_nodes, on_game=save,
+                         completed=completed, stop_when=(lambda games: test(games)["decision"] is not None)
+                         if test else None,
                          workers=args.workers)
             save(results)
         except (ValueError, RuntimeError, TimeoutError, OSError) as error:
@@ -233,8 +309,8 @@ def main():
     else:
         if args.workers != 1:
             parser.error("Parallel arena currently requires --protocol worker")
-        if args.openings or args.model_a or args.model_b:
-            parser.error("Models and fixed openings require --protocol worker")
+        if args.openings or args.model_a or args.model_b or args.max_nodes or args.sprt:
+            parser.error("Models, fixed openings, node budgets and SPRT require --protocol worker")
         if args.games < 2 or args.games % 2:
             parser.error("--games must be a positive even number for paired colors")
         results = match(args.engine_a or binary("pbrain-gomoku"),

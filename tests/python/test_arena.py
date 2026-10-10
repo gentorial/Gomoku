@@ -8,7 +8,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "src"))
 
-from gomoku_tools.arena import worker_match
+from gomoku_tools.arena import sprt, worker_match
 from gomoku_tools.protocol import Worker, binary
 
 
@@ -25,6 +25,51 @@ class ArenaTests(unittest.TestCase):
             self.assertEqual(game["status"], fixture["statusAfterMove"])
             self.assertEqual(game["analyses"][0]["ply"], len(moves))
             self.assertEqual(game["moves"][-1], fixture["bestMove"])
+
+    def test_node_budget_bounds_every_search_and_is_reproducible(self):
+        fixture = json.loads((ROOT / "tests/fixtures/winning-move.json").read_text())
+        opening = [{"id": "open", "moves": fixture["position"]["moves"][:4]}]
+        runs = [worker_match(binary(), binary(), opening, time_ms=10000, depth=12, max_nodes=300)
+                for _ in range(2)]
+        for game in runs[0]:
+            self.assertTrue(game["analyses"])
+            for analysis in game["analyses"]:
+                # The node check runs per searched node, so a budget may overshoot by one node.
+                self.assertLessEqual(analysis["nodes"], 301)
+        self.assertEqual([g["moves"] for g in runs[0]], [g["moves"] for g in runs[1]])
+        # A larger budget searches deeper on the same first position, so nodes are the binding limit.
+        wide = worker_match(binary(), binary(), opening, time_ms=10000, depth=12, max_nodes=30000)
+        self.assertGreater(wide[0]["analyses"][0]["depth"], runs[0][0]["analyses"][0]["depth"])
+        for nodes in (0, 10_000_001, 1.5):
+            with self.assertRaises(ValueError):
+                worker_match(binary(), binary(), opening, max_nodes=nodes)
+
+    def test_sprt_decides_clear_results_and_waits_on_small_samples(self):
+        def games(pair_scores):
+            return [{"openingId": str(i), "aColor": color, "scoreA": score}
+                    for i, pair in enumerate(pair_scores) for color, score in zip(("black", "white"), pair)]
+        self.assertIsNone(sprt(games([(1, 1)] * 3), 0, 10)["decision"])
+        strong = sprt(games([(1, 1)] * 40), 0, 10)
+        self.assertEqual((strong["decision"], strong["pentanomial"]), ("H1", [0, 0, 0, 0, 40]))
+        even = sprt(games([(1, 0), (0, 1), (1, 1), (0, 0)] * 100), 0, 50)
+        self.assertEqual(even["decision"], "H0")
+        self.assertAlmostEqual(even["score"], 0.5)
+        self.assertLess(even["eloInterval95"][0], 0)
+        self.assertGreater(even["eloInterval95"][1], 0)
+        # An incomplete pair carries no pentanomial information yet.
+        self.assertEqual(sprt(games([(1, 1)])[:1], 0, 10)["pairs"], 0)
+        for hypotheses in ((10, 0), (0, 10, 0.6, 0.05)):
+            with self.assertRaises(ValueError):
+                sprt([], *hypotheses)
+
+    def test_stop_condition_finishes_started_pairs_and_skips_new_openings(self):
+        fixture = json.loads((ROOT / "tests/fixtures/winning-move.json").read_text())
+        openings = [{"id": str(i), "moves": fixture["position"]["moves"]} for i in range(4)]
+        games = worker_match(binary(), binary(), openings, time_ms=100, stop_when=lambda played: len(played) >= 1)
+        self.assertEqual([(g["openingId"], g["aColor"]) for g in games], [("0", "black"), ("0", "white")])
+        resumed = worker_match(binary(), binary(), openings, time_ms=100, completed=games,
+                               stop_when=lambda played: True)
+        self.assertEqual(resumed, games)
 
     def test_invalid_opening_is_not_scored_as_an_engine_loss(self):
         with self.assertRaises(ValueError):
