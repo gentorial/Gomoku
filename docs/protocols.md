@@ -33,7 +33,7 @@ C++ 边界执行自己的输入校验；跨语言 fixture 和实际进程测试�
 
 分析：
 
-    {"v":1,"id":"q4","method":"analyze","position":{"size":15,"rule":"freestyle","moves":[]},"limits":{"timeMs":300,"maxDepth":4,"maxNodes":0}}
+    {"v":1,"id":"q4","method":"analyze","position":{"size":15,"rule":"freestyle","moves":[]},"limits":{"timeMs":300}}
 
 停止：
 
@@ -45,7 +45,8 @@ stop 的应答与被停止搜索的最终应答可能以任意顺序到达，必
 单 Worker 同时只接受一个分析，新分析在旧分析未结束时会失败。stdin EOF 会取消并退出。
 
 limits.timeMs 范围 0..10000；0 表示立即给出备用着。
-maxDepth 范围 1..12，默认 4；maxNodes 范围 0..10000000，0 表示不设置节点上限。
+maxDepth 可选，范围 1..64，只用于固定深度的测试与剖析；不传时搜索只受时间、节点与取消限制。
+maxNodes 范围 0..10000000，0 表示不设置节点上限。
 取消后返回最后完成的一层或合法备用着，reason=cancelled；不自动提交到棋局。
 
 分析结果包含 bestMove、pv、score、depth、nodes、elapsedMs、reason、evaluator。

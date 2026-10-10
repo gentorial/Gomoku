@@ -101,7 +101,7 @@ class Gomoku:
                 self.status.configure(text={"black_win": "黑棋获胜", "white_win": "白棋获胜",
                                             "draw": "和棋"}[result["status"]])
             elif self.human is not None and result["toMove"] != self.human:
-                self.submit("analyze", position=self.position(), limits={"timeMs": 300, "maxDepth": 4})
+                self.submit("analyze", position=self.position(), limits={"timeMs": 300})
             else:
                 self.status.configure(text="轮到" + ("黑棋" if result["toMove"] == "black" else "白棋"))
         self.root.after(40, self.poll)

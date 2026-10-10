@@ -121,7 +121,7 @@ def run_arena(model, baseline, openings, output, time_ms, engine, *, workers=4):
               "engines": {"a": {"executable": file_identity(engine), "model": file_identity(model)},
                           "b": {"executable": file_identity(engine), "model": file_identity(baseline)}},
               "openings": file_identity(openings), "size": opening_set["size"], "rule": opening_set["rule"],
-              "limits": {"timeMs": time_ms, "maxDepth": 12}}
+              "limits": {"timeMs": time_ms}}
     old_games = []
     if Path(output).exists():
         old = read_json(output)
@@ -136,7 +136,7 @@ def run_arena(model, baseline, openings, output, time_ms, engine, *, workers=4):
         print(json.dumps({"event": "campaign-arena", "output": str(output), **report["summary"]}), flush=True)
 
     games = worker_match(engine, engine, opening_set["openings"], model_a=model, model_b=baseline,
-                         size=opening_set["size"], rule=opening_set["rule"], time_ms=time_ms, depth=12, on_game=save, completed=old_games, workers=workers)
+                         size=opening_set["size"], rule=opening_set["rule"], time_ms=time_ms, on_game=save, completed=old_games, workers=workers)
     save(games)
     return report
 

@@ -101,7 +101,7 @@ prepare 校验每批标注摘要、按前 6 手的 D4 规范开局隔离集合�
 协议，显式指定模型，避免忘记加载权重而退回基础评估：
 
 ```powershell
-uv run --package gomoku-tools gomoku-arena --protocol worker --openings tests/fixtures/arena-openings-v1.json --model-a artifacts/models/rapfi-mate-v2/weights.gnn --model-b artifacts/models/rapfi-calibrated-v1/weights.gnn --time-ms 300 --depth 8 --output artifacts/arena/model-comparison.json
+uv run --package gomoku-tools gomoku-arena --protocol worker --openings tests/fixtures/arena-openings-v1.json --model-a artifacts/models/rapfi-mate-v2/weights.gnn --model-b artifacts/models/rapfi-calibrated-v1/weights.gnn --time-ms 300 --output artifacts/arena/model-comparison.json
 ```
 
 每个开局自动下两盘并交换双方引擎；Worker 模式按开局数决定局数，不使用

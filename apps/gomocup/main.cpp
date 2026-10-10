@@ -48,7 +48,7 @@ void think(Position& position, const Config& config) {
         evaluator = std::make_unique<NnueEvaluator>(config.model);
     } else evaluator = std::make_unique<HandcraftedEvaluator>();
     std::atomic_bool cancelled{false};
-    const auto result = search(position, *evaluator, {static_cast<int>(budget), 6, 0}, cancelled);
+    const auto result = search(position, *evaluator, {static_cast<int>(budget)}, cancelled);
     position.play(*result.best_move);
     std::cout << result.best_move->x << ',' << result.best_move->y << std::endl;
 }

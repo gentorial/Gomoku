@@ -170,7 +170,6 @@ export class MatchController {
             position: positionInput(position),
             limits: {
               timeMs: position.toMove === "black" ? config.blackTimeMs : config.whiteTimeMs,
-              maxDepth: 8,
             },
             evaluator: config.evaluator,
           },

@@ -36,7 +36,7 @@ Position position_from_case(const json& value) {
 
 json benchmark(const json& request) {
     if (!model) throw std::invalid_argument("Load the model before benchmarking");
-    const int depth = integer(request, "maxDepth", 1, 12);
+    const int depth = integer(request, "maxDepth", 1, 64);
     const auto max_nodes = request.value("maxNodes", std::uint64_t(0));
     const int time_ms = request.value("timeMs", 600000);
     if (time_ms < 0 || time_ms > 600000) throw std::invalid_argument("Invalid benchmark time limit");

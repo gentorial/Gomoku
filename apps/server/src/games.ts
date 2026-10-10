@@ -119,7 +119,7 @@ export class GameService {
         {
           method: "analyze",
           position,
-          limits: { timeMs: entry.game.thinkTimeMs, maxDepth: 4 },
+          limits: { timeMs: entry.game.thinkTimeMs },
         },
         operation.controller.signal,
       );

@@ -115,7 +115,8 @@ def mine_game(index, opening, *, engine, model, teacher_executable, teacher, set
             analyses = []
             while state["status"] == "playing" and len(position["moves"]) < settings["maxPlies"]:
                 analysis = worker.request("analyze", position=position, evaluator="nnue",
-                                          limits={"timeMs": settings["timeMs"], "maxDepth": settings["depth"]})
+                                          limits={"timeMs": settings["timeMs"],
+                                                  **({"maxDepth": settings["depth"]} if settings["depth"] else {})})
                 if analysis.get("evaluator") != "line11-nnue-v1":
                     raise ValueError("Self-play silently fell back from the requested NNUE")
                 analyses.append({"ply": len(position["moves"]), **analysis})
@@ -164,7 +165,7 @@ def mine_game(index, opening, *, engine, model, teacher_executable, teacher, set
 
 
 def mine(openings, output, model, teacher_executable, *, engine=None, workers=2,
-         time_ms=80, depth=8, max_plies=120, roots=32, leaves=16, teacher_nodes=200000, multipv=4):
+         time_ms=80, depth=None, max_plies=120, roots=32, leaves=16, teacher_nodes=200000, multipv=4):
     engine, model, teacher_executable = map(lambda p: Path(p).resolve(), (engine or binary(), model, teacher_executable))
     root = Path(output).resolve()
     settings = {"timeMs": time_ms, "depth": depth, "maxPlies": max_plies,
@@ -174,7 +175,7 @@ def mine(openings, output, model, teacher_executable, *, engine=None, workers=2,
     if ((opening_set.get("format"), opening_set.get("split")) != ("gomoku-openings-v1", "train")
             or size not in (15, 20) or rule not in ("freestyle", "standard")):
         raise ValueError("Mining requires a frozen training-only opening set")
-    if not (1 <= workers <= 32 and 0 <= time_ms <= 10000 and 1 <= depth <= 12 and
+    if not (1 <= workers <= 32 and 0 <= time_ms <= 10000 and (depth is None or 1 <= depth <= 64) and
             7 <= max_plies <= size * size and roots >= 1 and leaves >= 0 and teacher_nodes >= 1 and 1 <= multipv <= 32):
         raise ValueError("Invalid mining settings")
     if not opening_set["openings"] or len({o["id"] for o in opening_set["openings"]}) != len(opening_set["openings"]):

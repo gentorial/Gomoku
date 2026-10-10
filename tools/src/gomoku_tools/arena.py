@@ -12,7 +12,7 @@ from .rapfi import write_json
 
 
 def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
-                 size=15, rule="freestyle", time_ms=300, depth=8, max_nodes=None, on_game=None, completed=(),
+                 size=15, rule="freestyle", time_ms=300, depth=None, max_nodes=None, on_game=None, completed=(),
                  workers=1, stop_when=None, search_a=(), search_b=()):
     """Each fixed opening is played twice, swapping engines, with no adjudication.
 
@@ -26,10 +26,12 @@ def worker_match(engine_a, engine_b, openings, *, model_a=None, model_b=None,
     """
     if not openings or len({item["id"] for item in openings}) != len(openings):
         raise ValueError("Need nonempty openings with unique ids")
-    if not 0 <= time_ms <= 10000 or not 1 <= depth <= 12 or (
+    if not 0 <= time_ms <= 10000 or (depth is not None and not 1 <= depth <= 64) or (
             max_nodes is not None and (type(max_nodes) is not int or not 1 <= max_nodes <= 10_000_000)):
         raise ValueError("Invalid arena search limits")
-    limits = {"timeMs": time_ms, "maxDepth": depth, **({"maxNodes": max_nodes} if max_nodes else {})}
+    # Without a depth, each search runs until its time or node budget.
+    limits = {"timeMs": time_ms, **({"maxDepth": depth} if depth else {}),
+              **({"maxNodes": max_nodes} if max_nodes else {})}
     if type(workers) is not int or workers < 1:
         raise ValueError("Arena workers must be a positive integer")
     completed = list(completed)
@@ -244,7 +246,7 @@ def main():
     parser.add_argument("--model-a", type=Path)
     parser.add_argument("--model-b", type=Path)
     parser.add_argument("--openings", type=Path, help="gomoku-openings-v1 JSON; each opening is played twice")
-    parser.add_argument("--depth", type=int, default=8)
+    parser.add_argument("--depth", type=int, help="Fixed search depth, for diagnostics only (default: none)")
     parser.add_argument("--games", type=int, default=2)
     parser.add_argument("--size", type=int, choices=[15, 20], default=15)
     parser.add_argument("--rule", choices=["freestyle", "standard"], default="freestyle")
@@ -280,7 +282,7 @@ def main():
                               "b": {"executable": identity(engine_b), "model": identity(args.model_b),
                                     **({"search": args.search_b} if args.search_b else {})}},
                   "openings": identity(args.openings), "size": args.size, "rule": args.rule,
-                  "limits": {"timeMs": args.time_ms, "maxDepth": args.depth,
+                  "limits": {"timeMs": args.time_ms, **({"maxDepth": args.depth} if args.depth else {}),
                              **({"maxNodes": args.max_nodes} if args.max_nodes else {})},
                   **({"sprtTest": {"elo0": args.sprt[0], "elo1": args.sprt[1], "alpha": args.sprt_alpha,
                                    "beta": args.sprt_beta}} if args.sprt else {})}

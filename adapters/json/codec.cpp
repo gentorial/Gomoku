@@ -38,7 +38,7 @@ SearchLimits limits_from(const json& request) {
     SearchLimits limits;
     const auto config = request.value("limits", json::object());
     if (config.contains("timeMs")) limits.time_ms = integer(config, "timeMs", 0, 10000);
-    if (config.contains("maxDepth")) limits.max_depth = integer(config, "maxDepth", 1, 12);
+    if (config.contains("maxDepth")) limits.max_depth = integer(config, "maxDepth", 1, 64);
     if (config.contains("maxNodes")) limits.max_nodes = integer(config, "maxNodes", 0, 10000000);
     return limits;
 }

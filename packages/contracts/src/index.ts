@@ -21,7 +21,7 @@ export const StatusSchema = z.enum(["playing", "black_win", "white_win", "draw"]
 export const LimitsSchema = z
   .object({
     timeMs: z.number().int().min(0).max(10000),
-    maxDepth: z.number().int().min(1).max(12).optional(),
+    maxDepth: z.number().int().min(1).max(64).optional(),
     maxNodes: z.number().int().min(0).max(10000000).optional(),
   })
   .strict();

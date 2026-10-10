@@ -10,7 +10,9 @@
 namespace gomoku {
 struct SearchLimits {
     int time_ms = 300;
-    int max_depth = 4;
+    // Searches end on time, nodes or cancellation. A smaller depth is only for
+    // fixed-depth tests and profiling; 64 is the iterative-deepening ceiling.
+    int max_depth = 64;
     std::uint64_t max_nodes = 0;
 };
 // Per-search switches also provide an independent full-window reference path.
