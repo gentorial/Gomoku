@@ -24,7 +24,11 @@ self.onmessage = (event: MessageEvent<{ request: unknown; modelManifestUrl?: str
             self.postMessage({ type: "model-progress", id, ...state });
           });
         if (!modelSupports(loadedModel, request.position))
-          throw new Error("该 NNUE 仅支持 " + loadedModel.size + "×" + loadedModel.size + " 棋盘");
+          throw new Error(
+            "该 NNUE 仅支持 " +
+              loadedModel.sizes.map((size) => size + "×" + size).join("、") +
+              " 棋盘",
+          );
       }
       // A loaded NNUE must never silently replace an explicitly selected baseline.
       const actual =

@@ -46,7 +46,7 @@ json about_json(const std::shared_ptr<const NnueModel>& model) {
     return {{"kind", "about"}, {"name", "Gomoku"}, {"version", "0.1.0"},
             {"protocolVersion", 1}, {"rules", {"freestyle", "standard"}},
             {"sizes", {15, 20}}, {"evaluator", model ? "line11-nnue-v1" : "handcrafted-v1"},
-            {"nnue", model ? json{{"size", model->size()}, {"rule", rule_name(model->rule())},
+            {"nnue", model ? json{{"sizes", model->sizes()}, {"rule", rule_name(model->rule())},
                                    {"bytes", model->bytes()}} : json(nullptr)}};
 }
 std::unique_ptr<Evaluator> evaluator_for(const json& request, const Position& position,

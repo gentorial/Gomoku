@@ -55,7 +55,11 @@ const AboutSchema = z.object({
   sizes: z.array(BoardSizeSchema),
   evaluator: z.string(),
   nnue: z
-    .object({ size: BoardSizeSchema, rule: RuleSchema, bytes: z.number().int().positive() })
+    .object({
+      sizes: z.array(BoardSizeSchema).min(1),
+      rule: RuleSchema,
+      bytes: z.number().int().positive(),
+    })
     .nullable()
     .optional(),
 });

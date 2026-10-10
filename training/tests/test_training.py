@@ -28,6 +28,7 @@ from gomoku_training import prepare as preparation
 from gomoku_training.io import file_sha256
 from gomoku_training.assess import reference_check
 from gomoku_training.evaluate import evaluate
+from gomoku_training.widen import widen
 
 
 def fixture_samples(count=24, size=15):
@@ -254,6 +255,116 @@ class TrainingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "checksum"):
                 prepare([], root / "corrupt-data", teacher_corpus=corpus)
 
+    def test_widened_value_head_preserves_outputs_and_trains(self):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            root = Path(temporary)
+            config = Config(
+                model=ModelConfig(
+                    mapping_width=4, channels=4, value_hidden=8, policy_hidden=4
+                ),
+                data=DataConfig(str(make_data(root))),
+                run=RunConfig(
+                    output=str(root / "narrow"),
+                    device="cpu",
+                    steps=1,
+                    batch_size=4,
+                    validation_batches=1,
+                    cpu_threads=2,
+                ),
+            )
+            run_training(config)
+            widen(root / "narrow/last.pt", root / "wide.pt", 16)
+            narrow, wide = (
+                load_checkpoint(root / "narrow/last.pt"),
+                load_checkpoint(root / "wide.pt"),
+            )
+            self.assertEqual(wide["modelConfig"]["value_hidden"], 16)
+            models = []
+            for state in (narrow, wide):
+                model = LineNNUE(ModelConfig(**state["modelConfig"]))
+                model.load_state_dict(state["model"])
+                models.append(model.eval())
+            rng = np.random.default_rng(3)
+            for size in (15, 20):
+                boards = torch.from_numpy(rng.integers(0, 3, (3, size, size)))
+                turn = torch.tensor([1, 2, 1])
+                with torch.no_grad():
+                    a, b = (model(boards, turn) for model in models)
+                for key in ("value", "policy"):
+                    torch.testing.assert_close(a[key], b[key], rtol=0, atol=1e-6)
+            wide_config = replace(
+                config,
+                model=replace(config.model, value_hidden=16),
+                run=replace(config.run, output=str(root / "wide")),
+            )
+            self.assertTrue(
+                run_training(wide_config, initialize=root / "wide.pt")["completed"]
+            )
+            with self.assertRaises(ValueError):
+                widen(root / "wide.pt", root / "narrower.pt", 8)
+
+    def test_mixed_board_sizes_train_resume_and_export_one_model(self):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            root = Path(temporary)
+            path = root / "samples-20.jsonl"
+            path.write_text(
+                "".join(json.dumps(item) + "\n" for item in fixture_samples(24, 20)),
+                encoding="utf-8",
+            )
+            prepare([path], root / "data-20", size=20, shard_size=5)
+            config = Config(
+                model=ModelConfig(
+                    mapping_width=4, channels=4, value_hidden=8, policy_hidden=4
+                ),
+                data=DataConfig(
+                    str(make_data(root)),
+                    mix=[str(root / "data-20/manifest.json")],
+                    mix_weights=[1, 3],
+                ),
+                run=RunConfig(
+                    output=str(root / "run"),
+                    device="cpu",
+                    steps=6,
+                    batch_size=4,
+                    validation_batches=1,
+                    checkpoint_every=2,
+                    cpu_threads=2,
+                ),
+            )
+            self.assertFalse(run_training(config, stop_after=3)["completed"])
+            self.assertTrue(run_training(config, resume=True)["completed"])
+            state = load_checkpoint(root / "run/last.pt")
+            self.assertEqual(state["sizes"], [15, 20])
+            self.assertNotIn("size", state)
+            validation = [
+                json.loads(line)
+                for line in (root / "run/metrics.jsonl").read_text().splitlines()
+                if json.loads(line)["event"] == "validation"
+            ][-1]
+            self.assertEqual([d["size"] for d in validation["datasets"]], [15, 20])
+            for manifest in (config.data.manifest, config.data.mix[0]):
+                self.assertTrue(evaluate(root / "run/last.pt", manifest, "validation", "cpu")["positions"])
+            export_checkpoint(root / "run/last.pt", root / "export")
+            raw = (root / "export/weights.gnn").read_bytes()
+            self.assertEqual(struct.unpack_from("<I", raw, 8)[0], 2)
+            self.assertEqual(struct.unpack_from("<II", raw, 40), (3, 0))
+            exported = json.loads((root / "export/manifest.json").read_text())
+            self.assertEqual((exported["sizes"], "size" in exported), ([15, 20], False))
+            # A single-size checkpoint may initialize mixed training; resume may not change sizes.
+            single = replace(config, data=replace(config.data, mix=[], mix_weights=[]),
+                             run=replace(config.run, output=str(root / "single"), steps=1))
+            run_training(single)
+            fresh = replace(config, run=replace(config.run, output=str(root / "fresh"), steps=1))
+            self.assertTrue(run_training(fresh, initialize=root / "single/last.pt")["completed"])
+            with self.assertRaises(ValueError):
+                replace(config, data=replace(config.data, mix_weights=[1])).validate()
+
     def test_gradient_accumulation_matches_full_batch_update(self):
         with (
             tempfile.TemporaryDirectory() as temporary,
@@ -454,37 +565,47 @@ class TrainingTests(unittest.TestCase):
                 "gomoku-nnue-check.exe" if sys.platform == "win32" else "gomoku-nnue-check"
             )
             self.assertTrue(checker.is_file(), "Build the native engine before runtime integration tests")
-            # Exercise both colors, corners/edges and uneven 20x20 pooling regions.
-            for size, rule in ((15, "freestyle"), (20, "standard")):
+            # Exercise both colors, corners/edges and uneven 20x20 pooling regions,
+            # including a format-v2 model whose one vector file mixes both boards.
+            for version, sizes, rule in (
+                (1, [15], "freestyle"),
+                (1, [20], "standard"),
+                (2, [15, 20], "freestyle"),
+            ):
                 binary = root / "export/weights.gnn"
                 raw = bytearray(binary.read_bytes())
-                struct.pack_into("<II", raw, 40, size, 0 if rule == "freestyle" else 1)
+                struct.pack_into("<I", raw, 8, version)
+                boards = sizes[0] if version == 1 else 3
+                struct.pack_into("<II", raw, 40, boards, 0 if rule == "freestyle" else 1)
                 binary.write_bytes(raw)
-                deployment = {**exported, "size": size, "rule": rule, "sha256": file_sha256(binary)}
+                deployment = {k: v for k, v in exported.items() if k != "size"}
+                deployment.update(sizes=sizes, rule=rule, sha256=file_sha256(binary))
                 (root / "export/manifest.json").write_text(json.dumps(deployment), encoding="utf-8")
                 quantized = QuantizedReference(root / "export/manifest.json")
                 cases = []
                 try:
                     rng = np.random.default_rng(94)
-                    for turn in (1, 2):
-                        for stones in (0, 1, 8, 24):
-                            board = np.zeros((size, size), dtype=np.uint8)
-                            points = rng.choice(size * size, stones, replace=False)
-                            board.reshape(-1)[points] = np.arange(stones) % 2 + 1
-                            if stones:
-                                board[0, 0] = turn
-                                board[-1, -1] = 3 - turn
-                            prediction = quantized.predict(board, turn)
-                            cases.append({"board": board.tolist(), "toMove": turn,
-                                          "valueLogits": prediction["value"].tolist(),
-                                          "policyLogits": prediction["policy"].tolist()})
+                    for size in sizes:
+                        for turn in (1, 2):
+                            for stones in (0, 1, 8, 24):
+                                board = np.zeros((size, size), dtype=np.uint8)
+                                points = rng.choice(size * size, stones, replace=False)
+                                board.reshape(-1)[points] = np.arange(stones) % 2 + 1
+                                if stones:
+                                    board[0, 0] = turn
+                                    board[-1, -1] = 3 - turn
+                                prediction = quantized.predict(board, turn)
+                                cases.append({"board": board.tolist(), "toMove": turn,
+                                              "valueLogits": prediction["value"].tolist(),
+                                              "policyLogits": prediction["policy"].tolist()})
                 finally:
                     quantized.close()
                 cases_path = root / "runtime-vectors.json"
                 cases_path.write_text(json.dumps({"format": "line-nnue-reference-v1", "vectors": cases}), encoding="utf-8")
                 for command in ([str(checker), str(binary), str(cases_path)],
                                 ["node", str(repository / "scripts/check-export.mjs"), str(binary), str(cases_path)]):
-                    subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
+                    result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             with self.assertRaisesRegex(ValueError, "checkpoint"):
                 reference_check(
                     root / "run/initial.pt", root / "export/manifest.json", manifest

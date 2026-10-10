@@ -10,7 +10,7 @@ export type BrowserModel = {
   id: string;
   label: string;
   architecture: "line11-dual-v1";
-  size: 15 | 20;
+  sizes: (15 | 20)[];
   rule: "freestyle" | "standard";
   weights: string;
   bytes: number;
@@ -18,7 +18,9 @@ export type BrowserModel = {
 };
 
 export function parseModel(value: unknown): BrowserModel {
-  const model = value as BrowserModel;
+  // Older manifests name a single board as `size`.
+  const raw = value as BrowserModel & { size?: unknown };
+  const model = raw && { ...raw, sizes: raw.sizes ?? [raw.size as 15 | 20] };
   if (
     !model ||
     model.formatVersion !== 1 ||
@@ -27,7 +29,9 @@ export function parseModel(value: unknown): BrowserModel {
     !/^[a-z0-9-]+$/.test(model.id) ||
     typeof model.label !== "string" ||
     model.label.length > 80 ||
-    ![15, 20].includes(model.size) ||
+    !Array.isArray(model.sizes) ||
+    !model.sizes.length ||
+    model.sizes.some((size, i) => ![15, 20].includes(size) || size <= (model.sizes[i - 1] ?? 0)) ||
     !["freestyle", "standard"].includes(model.rule) ||
     !Number.isSafeInteger(model.bytes) ||
     model.bytes < 56 ||
@@ -37,13 +41,15 @@ export function parseModel(value: unknown): BrowserModel {
     model.weights !== model.sha256 + "/weights.gnn"
   )
     throw new Error("无效的 NNUE 模型清单");
-  return model;
+  const { size: _legacy, ...normalized } = model;
+  return normalized;
 }
 
 /** Mirrors NnueModel::supports: freestyle weights also serve standard games. */
 export function modelSupports(model: BrowserModel, position: { size: number; rule: string }) {
   return (
-    model.size === position.size && (model.rule === position.rule || model.rule === "freestyle")
+    model.sizes.includes(position.size as 15 | 20) &&
+    (model.rule === position.rule || model.rule === "freestyle")
   );
 }
 
@@ -140,7 +146,11 @@ export async function loadBrowserModel(
       [JSON.stringify({ v: 1, id: "model-check", method: "about" })],
     ),
   );
-  if (!about.ok || about.result.nnue?.size !== model.size || about.result.nnue?.rule !== model.rule)
+  if (
+    !about.ok ||
+    JSON.stringify(about.result.nnue?.sizes) !== JSON.stringify(model.sizes) ||
+    about.result.nnue?.rule !== model.rule
+  )
     throw new Error("NNUE 权重与清单的棋盘或规则不一致");
   report("ready");
   return model;

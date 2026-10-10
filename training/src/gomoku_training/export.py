@@ -11,7 +11,7 @@ from .device import torch, resolve_device, runtime_info
 from .features import PATTERN_COUNT, enumerate_patterns, pattern_ids
 from .io import atomic_write, file_sha256, read_json, write_json
 from .model import LineNNUE, aligned_context
-from .train import load_checkpoint
+from .train import board_sizes, load_checkpoint
 
 MAGIC = b"GMLINE1\0"
 HEADER = struct.Struct("<8s12I")
@@ -38,6 +38,13 @@ def tensor_shapes(config):
     }
 
 
+def header_boards(sizes):
+    """Format version 1 names its single board; version 2 stores a 15/20 bit mask."""
+    if len(sizes) == 1:
+        return 1, sizes[0]
+    return 2, sum(1 << (15, 20).index(size) for size in sizes)
+
+
 def export_checkpoint(checkpoint, output, *, device="cpu", chunk_size=4096):
     if chunk_size < 1:
         raise ValueError("chunk_size must be positive")
@@ -56,12 +63,14 @@ def export_checkpoint(checkpoint, output, *, device="cpu", chunk_size=4096):
     output.mkdir(parents=True, exist_ok=True)
     weights_path = output / "weights.gnn"
     shapes = tensor_shapes(config)
+    sizes = board_sizes(state)
+    version, boards = header_boards(sizes)
 
     def write(stream):
         stream.write(
             HEADER.pack(
                 MAGIC,
-                1,
+                version,
                 1,
                 config.mapping_width,
                 config.channels,
@@ -69,7 +78,7 @@ def export_checkpoint(checkpoint, output, *, device="cpu", chunk_size=4096):
                 config.policy_hidden,
                 config.activation_scale,
                 config.weight_scale,
-                state["size"],
+                boards,
                 {"freestyle": 0, "standard": 1}[state["rule"]],
                 len(shapes),
                 PATTERN_COUNT,
@@ -125,7 +134,8 @@ def export_checkpoint(checkpoint, output, *, device="cpu", chunk_size=4096):
         "architectureHash": digest(asdict(config)),
         "modelConfig": asdict(config),
         "rule": state["rule"],
-        "size": state["size"],
+        **({"size": sizes[0]} if len(sizes) == 1 else {}),
+        "sizes": sizes,
         "quantization": "int16-weights-int64-reference-v1",
         "weights": "weights.gnn",
         "sha256": file_sha256(weights_path),
@@ -142,13 +152,18 @@ def export_checkpoint(checkpoint, output, *, device="cpu", chunk_size=4096):
     reference = QuantizedReference(output / "manifest.json")
     try:
         vectors = []
-        for stones in ([], [(0, 0)], [(7, 7), (8, 7), (6, 6)]):
-            board = np.zeros((state["size"], state["size"]), dtype=np.uint8)
+        for size, stones in (
+            (size, stones)
+            for size in sizes
+            for stones in ([], [(0, 0)], [(7, 7), (8, 7), (6, 6)])
+        ):
+            board = np.zeros((size, size), dtype=np.uint8)
             for i, (x, y) in enumerate(stones):
                 board[y, x] = i % 2 + 1
             result = reference.predict(board, len(stones) % 2 + 1)
             vectors.append(
                 {
+                    "size": size,
                     "moves": [{"x": x, "y": y} for x, y in stones],
                     "valueLogits": result["value"].tolist(),
                     "policyLogits": result["policy"].tolist(),
@@ -184,11 +199,10 @@ class QuantizedReference:
             raise ValueError("Unsupported export manifest")
         self.config = ModelConfig(**self.manifest["modelConfig"])
         self.config.validate()
-        self.size = self.manifest["size"]
+        self.sizes = board_sizes(self.manifest)
         if (
             self.manifest.get("architecture") != self.config.architecture
             or self.manifest.get("architectureHash") != digest(asdict(self.config))
-            or self.size not in (15, 20)
             or self.manifest["rule"] not in ("freestyle", "standard")
         ):
             raise ValueError("Export architecture or rule mismatch")
@@ -204,7 +218,7 @@ class QuantizedReference:
                 c = self.config
                 expected = (
                     MAGIC,
-                    1,
+                    *header_boards(self.sizes)[:1],
                     1,
                     c.mapping_width,
                     c.channels,
@@ -212,7 +226,7 @@ class QuantizedReference:
                     c.policy_hidden,
                     c.activation_scale,
                     c.weight_scale,
-                    self.size,
+                    header_boards(self.sizes)[1],
                     {"freestyle": 0, "standard": 1}[self.manifest["rule"]],
                     14,
                     PATTERN_COUNT,
@@ -268,14 +282,16 @@ class QuantizedReference:
         )
 
     def predict(self, board, to_move):
+        size = board.shape[0]
         if (
-            board.shape != (self.size, self.size)
+            size not in self.sizes
+            or board.shape != (size, size)
             or to_move not in (1, 2)
             or not np.isin(board, [0, 1, 2]).all()
         ):
             raise ValueError("Invalid reference position")
         maps = []
-        c, size, q = self.config.channels, self.size, self.config.activation_scale
+        c, q = self.config.channels, self.config.activation_scale
         for perspective in (1, 2):
             ids = pattern_ids(board, perspective)
             hv, diag = self.tensors["codebook.hv"], self.tensors["codebook.diag"]

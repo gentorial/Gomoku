@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { installModel, loadBrowserModel, modelSupports, parseModel } from "../src/model.js";
 import { BrowserEngine } from "../src/index.js";
+import { WorkerResponseSchema } from "@gomoku/contracts";
 import type { GomokuModule } from "../generated/gomoku-engine.mjs";
 
 const bytes = new Uint8Array(64).fill(7);
@@ -36,7 +37,7 @@ function engine() {
         ++installed;
         return "";
       }
-      return JSON.stringify({ ok: true, result: { nnue: { size: 15, rule: "freestyle" } } });
+      return JSON.stringify({ ok: true, result: { nnue: { sizes: [15], rule: "freestyle" } } });
     },
   } as unknown as GomokuModule;
   return { module, counts: () => ({ freed, installed }) };
@@ -193,4 +194,31 @@ test("freestyle weights also serve standard games on the same board size", () =>
   assert.ok(modelSupports(model, { size: 15, rule: "standard" }));
   assert.ok(!modelSupports(model, { size: 20, rule: "freestyle" }));
   assert.ok(!modelSupports({ ...model, rule: "standard" }, { size: 15, rule: "freestyle" }));
+});
+
+test("manifests declare one or more ascending boards; legacy single-size manifests still load", () => {
+  const legacy = parseModel(manifest);
+  assert.deepEqual(legacy.sizes, [15]);
+  assert.ok(!("size" in legacy));
+  const { size: _size, ...current } = manifest;
+  const both = parseModel({ ...current, sizes: [15, 20] });
+  assert.ok(modelSupports(both, { size: 20, rule: "standard" }));
+  for (const sizes of [[], [20, 15], [15, 15], [19]])
+    assert.throws(() => parseModel({ ...current, sizes }), /无效的 NNUE 模型清单/);
+});
+
+test("about reports every board size of a loaded model", () => {
+  const about = {
+    kind: "about",
+    name: "Gomoku",
+    version: "0.1.0",
+    protocolVersion: 1,
+    rules: ["freestyle", "standard"],
+    sizes: [15, 20],
+    evaluator: "line11-nnue-v1",
+    nnue: { sizes: [15, 20], rule: "freestyle", bytes: 64 },
+  };
+  assert.ok(WorkerResponseSchema.safeParse({ v: 1, id: "a", ok: true, result: about }).success);
+  const legacy = { ...about, nnue: { size: 15, rule: "freestyle", bytes: 64 } };
+  assert.ok(!WorkerResponseSchema.safeParse({ v: 1, id: "a", ok: true, result: legacy }).success);
 });

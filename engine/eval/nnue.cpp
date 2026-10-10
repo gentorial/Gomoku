@@ -53,16 +53,20 @@ std::shared_ptr<const NnueModel> NnueModel::load(std::span<const std::uint8_t> b
     Reader reader{bytes};
     const auto magic = reader.take(8);
     if (std::memcmp(magic.data(), "GMLINE1\0", 8) != 0) throw std::invalid_argument("Invalid NNUE magic");
-    reader.expect(1); reader.expect(1);
+    // Version 1 names one board size; version 2 stores a board-size mask.
+    const auto version = reader.u32();
+    if (version != 1 && version != 2) throw std::invalid_argument("Unsupported NNUE format version");
+    reader.expect(1);
     reader.width(); // Mapping MLP was folded into the codebooks during export.
     auto model = std::shared_ptr<NnueModel>(new NnueModel);
     const int c = model->channels_ = reader.width();
     const int v = model->value_hidden_ = reader.width();
     const int p = model->policy_hidden_ = reader.width();
     reader.expect(256); reader.expect(1024);
-    model->size_ = static_cast<int>(reader.u32());
+    const auto boards = reader.u32();
+    model->sizes_ = version == 1 ? (boards == 15 ? 1 : boards == 20 ? 2 : 0) : (boards <= 3 ? boards : 0);
     const auto rule = reader.u32();
-    if ((model->size_ != 15 && model->size_ != 20) || rule > 1)
+    if (!model->sizes_ || (version == 2 && boards != 3) || rule > 1)
         throw std::invalid_argument("Unsupported NNUE board or rule");
     model->rule_ = rule == 0 ? Rule::freestyle : Rule::standard;
     reader.expect(14); reader.expect(patterns);
@@ -125,7 +129,12 @@ std::shared_ptr<const NnueModel> NnueModel::load_file(const std::string& path) {
 // The network has no rule input; five/overline adjudication lives in the rules
 // library and search. Freestyle weights therefore also serve standard games.
 bool NnueModel::supports(const Position& position) const {
-    return position.size() == size_ && (position.rule() == rule_ || rule_ == Rule::freestyle);
+    return supports_size(position.size()) && (position.rule() == rule_ || rule_ == Rule::freestyle);
+}
+std::vector<int> NnueModel::sizes() const {
+    std::vector<int> result;
+    for (int size : {15, 20}) if (supports_size(size)) result.push_back(size);
+    return result;
 }
 
 struct NnueEvaluator::State {
@@ -159,8 +168,10 @@ struct NnueEvaluator::State {
     std::array<std::int64_t, 3> value_output{};
     std::array<std::int64_t, 1> policy_output{};
 
-    explicit State(std::shared_ptr<const NnueModel> weights) : model(std::move(weights)),
-        size(model->size_), c(model->channels_), count(size*size),
+    // Accumulators and geometry are per board size; the evaluator rebuilds this
+    // state when a reset switches to another size the model supports.
+    State(std::shared_ptr<const NnueModel> weights, int board) : model(std::move(weights)),
+        size(board), c(model->channels_), count(size*size),
         lines(count), affected(count), fanouts(count), pattern_ids(count), regions(count),
         merged(2*count*c), spatial(2*count*c), deltas(2*count*c), spatial_weights(9*c),
         preactivation(2*count*c), pools(20*c), changed(2*count),
@@ -219,7 +230,7 @@ struct NnueEvaluator::State {
         }
     }
     void check(const Position& position) const {
-        if (turn == Color::empty || position.hash() != hash || !model->supports(position))
+        if (turn == Color::empty || position.hash() != hash || position.size() != size || !model->supports(position))
             throw std::logic_error("NNUE accumulator does not match position");
     }
     void rebuild_patterns(const Position& position, int point) {
@@ -312,13 +323,15 @@ struct NnueEvaluator::State {
 NnueEvaluator::NnueEvaluator(std::shared_ptr<const NnueModel> model) {
     GOMOKU_SCOPE(evaluator);
     if (!model) throw std::invalid_argument("NNUE model required");
-    state_ = std::make_unique<State>(std::move(model));
+    const int size = model->sizes().front();
+    state_ = std::make_unique<State>(std::move(model), size);
 }
 NnueEvaluator::~NnueEvaluator() = default;
 void NnueEvaluator::reset(const Position& position) {
     GOMOKU_SCOPE(reset);
+    if (!state_->model->supports(position)) throw std::invalid_argument("NNUE model does not support this board/rule");
+    if (state_->size != position.size()) state_ = std::make_unique<State>(state_->model, position.size());
     auto& s = *state_;
-    if (!s.model->supports(position)) throw std::invalid_argument("NNUE model does not support this board/rule");
     s.turn = position.turn(); s.hash = position.hash(); s.depth = 0;
     std::fill(s.spatial.begin(), s.spatial.end(), 0);
     std::fill(s.pools.begin(), s.pools.end(), 0);

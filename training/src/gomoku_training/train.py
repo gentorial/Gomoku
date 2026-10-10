@@ -46,12 +46,25 @@ def load_checkpoint(path):
     return state
 
 
+def board_sizes(state):
+    """Board sizes a checkpoint or export manifest was trained for, ascending."""
+    sizes = state.get("sizes", [state.get("size")])
+    if not sizes or sorted(set(sizes)) != list(sizes) or not set(sizes) <= {15, 20}:
+        raise ValueError("Unsupported board sizes")
+    return list(sizes)
+
+
 def compatibility(config, dataset_digest):
     value = config.to_dict()
     # Preserve the pre-v3 resume fingerprint for unchanged legacy objectives.
     if value["loss"]["value_target"] == "legacy":
         value["loss"].pop("value_target")
     value["data"].pop("manifest")
+    # Paths are not identity; the mixed datasets' digests are.
+    value["data"]["mix"] = len(value["data"]["mix"])
+    if not value["data"]["mix"] and not value["data"]["mix_weights"]:
+        value["data"].pop("mix")
+        value["data"].pop("mix_weights")
     for name in ("output", "device", "cpu_threads"):
         value["run"].pop(name)
     return digest({"config": value, "dataset": dataset_digest})
@@ -126,14 +139,28 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
     torch.set_num_threads(config.run.cpu_threads)
     torch.manual_seed(config.run.seed)
     random.seed(config.run.seed)
-    train = ShardDataset(config.data.manifest, "train")
-    validation = None
+    manifests = [config.data.manifest, *config.data.mix]
+    trains, validations = [], []
     try:
-        validation = ShardDataset(config.data.manifest, "validation")
-        if not len(train) or not len(validation):
-            raise ValueError(
-                "Nonempty, independent training and validation splits are required"
-            )
+        for manifest in manifests:
+            trains.append(ShardDataset(manifest, "train"))
+            validations.append(ShardDataset(manifest, "validation"))
+            if not len(trains[-1]) or not len(validations[-1]):
+                raise ValueError(
+                    "Nonempty, independent training and validation splits are required"
+                )
+        train, validation = trains[0], validations[0]
+        if len({dataset.rule for dataset in trains}) != 1:
+            raise ValueError("Mixed datasets must share one rule")
+        sizes = sorted({dataset.size for dataset in trains})
+        mixed = len(trains) > 1
+        weights = np.array(
+            config.data.mix_weights or [len(dataset) for dataset in trains], dtype=float
+        )
+        weights /= weights.sum()
+        dataset_digest = (
+            digest([dataset.digest for dataset in trains]) if mixed else train.digest
+        )
         out = Path(config.run.output)
         checkpoint_path = out / "last.pt"
         if resume and not checkpoint_path.is_file():
@@ -151,12 +178,13 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
         )
         step, best, sampler_state = 0, float("inf"), None
         initialized_from = None
-        identity = compatibility(config, train.digest)
+        identity = compatibility(config, dataset_digest)
         if resume or initialize:
             state = load_checkpoint(checkpoint_path if resume else initialize)
             if state["modelConfig"] != asdict(config.model):
                 raise ValueError("Checkpoint architecture differs from configuration")
-            if state["rule"] != train.rule or state["size"] != train.size:
+            # The network is board-size agnostic, so initialization may change size.
+            if state["rule"] != train.rule or (resume and board_sizes(state) != sizes):
                 raise ValueError("Checkpoint rule or board size differs from dataset")
             model.load_state_dict(state["model"], strict=True)
             if resume:
@@ -180,13 +208,20 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
                     "datasetSha256": state["datasetSha256"],
                     "source": state.get("source", {}),
                 }
-        sampler = BlockSampler(
-            len(train), config.run.seed, config.data.shuffle_block, sampler_state
-        )
+        samplers = [
+            BlockSampler(
+                len(dataset),
+                config.run.seed + i,
+                config.data.shuffle_block,
+                (sampler_state[i] if mixed else sampler_state) if sampler_state else None,
+            )
+            for i, dataset in enumerate(trains)
+        ]
+        sampler = samplers[0]
         metadata = {
             "kind": "nnue-training-run",
             "config": config.to_dict(),
-            "datasetSha256": train.digest,
+            "datasetSha256": dataset_digest,
             "runtime": runtime_info(device),
             "source": source_info(),
             "architectureHash": model.architecture_hash,
@@ -195,7 +230,10 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
         }
         if not resume:
             write_json(out / "run.json", metadata)
-            write_json(out / "dataset-manifest.json", train.manifest)
+            write_json(
+                out / "dataset-manifest.json",
+                [dataset.manifest for dataset in trains] if mixed else train.manifest,
+            )
         log_path = out / "metrics.jsonl"
         if resume and log_path.exists():
 
@@ -224,6 +262,19 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
         except ValueError:
             pass
 
+        def validate():
+            # Mixed runs select checkpoints on the mixture-weighted validation loss.
+            results = [validate_model(model, v, config, device) for v in validations]
+            if not mixed:
+                return results[0]
+            return {
+                "loss": float(sum(w * r["loss"] for w, r in zip(weights, results))),
+                "datasets": [
+                    {"size": d.size, "weight": float(w), **r}
+                    for d, w, r in zip(trains, weights, results)
+                ],
+            }
+
         def save(path):
             state = {
                 "kind": CHECKPOINT_KIND,
@@ -232,8 +283,8 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
                 "modelConfig": asdict(config.model),
                 "config": config.to_dict(),
                 "rule": train.rule,
-                "size": train.size,
-                "datasetSha256": train.digest,
+                **({"sizes": sizes} if mixed else {"size": train.size}),
+                "datasetSha256": dataset_digest,
                 "runtime": metadata["runtime"],
                 "source": metadata["source"],
                 "initializedFrom": initialized_from,
@@ -242,7 +293,9 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
                 "bestValidation": best,
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
-                "sampler": sampler.state_dict(),
+                "sampler": [s.state_dict() for s in samplers]
+                if mixed
+                else sampler.state_dict(),
                 "rng": rng_state(device),
                 "pythonRng": random.getstate(),
             }
@@ -254,7 +307,7 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
         try:
             with log_path.open("a", encoding="utf-8", buffering=1) as log:
                 if not resume:
-                    baseline = validate_model(model, validation, config, device)
+                    baseline = validate()
                     best = baseline["loss"]
                     record = {
                         "event": "validation",
@@ -270,13 +323,23 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
                 while step < config.run.steps and not stopping:
                     if stop_after is not None and step - initial_step >= stop_after:
                         break
-                    indices = sampler.next_indices(config.run.batch_size)
+                    # One dataset (one board size) per update, drawn reproducibly by step.
+                    source = (
+                        int(
+                            np.random.default_rng([config.run.seed, step, 7]).choice(
+                                len(trains), p=weights
+                            )
+                        )
+                        if mixed
+                        else 0
+                    )
+                    indices = samplers[source].next_indices(config.run.batch_size)
                     augmentation = (
                         np.random.default_rng([config.run.seed, step, 9])
                         if config.data.augment
                         else None
                     )
-                    batch = tensor_batch(train, indices, device, augmentation)
+                    batch = tensor_batch(trains[source], indices, device, augmentation)
                     optimizer.zero_grad(set_to_none=True)
                     for group in optimizer.param_groups:
                         group["lr"] = learning_rate(step, config.run)
@@ -329,7 +392,7 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
                         log.write(json.dumps(record, allow_nan=False) + "\n")
                         print(json.dumps(record, allow_nan=False), flush=True)
                     if step % config.run.validate_every == 0 or final_step:
-                        metrics = validate_model(model, validation, config, device)
+                        metrics = validate()
                         record = {"event": "validation", "step": step, **metrics}
                         log.write(json.dumps(record, allow_nan=False) + "\n")
                         print(json.dumps(record, allow_nan=False), flush=True)
@@ -354,9 +417,8 @@ def run_training(config, *, resume=False, initialize=None, stop_after=None):
         write_json(out / "status.json", result)
         return result
     finally:
-        train.close()
-        if validation is not None:
-            validation.close()
+        for dataset in (*trains, *validations):
+            dataset.close()
 
 
 def main():

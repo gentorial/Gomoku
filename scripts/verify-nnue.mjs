@@ -51,7 +51,7 @@ for (const vector of reference.vectors) {
         JSON.stringify({
           board: vector.board,
           toMove: vector.toMove,
-          size: pin.size,
+          size: vector.board.length,
           rule: pin.rule,
         }),
       ],
@@ -97,6 +97,8 @@ const tactical = request({
 });
 assert.deepEqual(tactical.bestMove, fixture.bestMove);
 assert.equal(tactical.evaluator, "line11-nnue-v1");
+// Any board the pinned model does not declare must be rejected explicitly.
+const unsupportedSize = [15, 20].find((size) => !(pin.sizes ?? [pin.size]).includes(size));
 const unsupported = JSON.parse(
   engine.ccall(
     "gomoku_request",
@@ -108,34 +110,46 @@ const unsupported = JSON.parse(
         id: "unsupported",
         method: "analyze",
         evaluator: "nnue",
-        position: { size: 20, rule: "standard", moves: [] },
+        position: { size: unsupportedSize ?? 21, rule: "standard", moves: [] },
         limits: { timeMs: 0 },
       }),
     ],
   ),
 );
 assert.equal(unsupported.ok, false, "Explicit NNUE must reject incompatible rules/size");
-let position = { size: 15, rule: "freestyle", moves: [] };
-let status = "playing",
-  nodes = 0,
-  milliseconds = 0;
-for (let ply = 0; ply < 225 && status === "playing"; ++ply) {
-  const result = request({
-    method: "analyze",
-    evaluator: "nnue",
-    position,
-    limits: { timeMs: 100, maxDepth: 2, maxNodes: 64 },
+// One complete NNUE self-play game on every board the model declares; the same
+// evaluator switches boards, exercising the per-size accumulator rebuild.
+const selfPlay = [];
+for (const size of pin.sizes ?? [pin.size]) {
+  let position = { size, rule: "freestyle", moves: [] };
+  let status = "playing",
+    nodes = 0,
+    milliseconds = 0;
+  for (let ply = 0; ply < size * size && status === "playing"; ++ply) {
+    const result = request({
+      method: "analyze",
+      evaluator: "nnue",
+      position,
+      limits: { timeMs: 100, maxDepth: 2, maxNodes: 64 },
+    });
+    assert.equal(result.evaluator, "line11-nnue-v1");
+    assert.ok(result.bestMove);
+    nodes += result.nodes;
+    milliseconds += result.elapsedMs;
+    const next = request({ method: "play", position, move: result.bestMove });
+    assert.equal(next.moves.length, position.moves.length + 1);
+    status = next.status;
+    position = { size: next.size, rule: next.rule, moves: next.moves };
+  }
+  assert.notEqual(status, "playing", "A full NNUE vs NNUE game must terminate");
+  selfPlay.push({
+    size,
+    status,
+    plies: position.moves.length,
+    nodes,
+    searchMilliseconds: milliseconds,
   });
-  assert.equal(result.evaluator, "line11-nnue-v1");
-  assert.ok(result.bestMove);
-  nodes += result.nodes;
-  milliseconds += result.elapsedMs;
-  const next = request({ method: "play", position, move: result.bestMove });
-  assert.equal(next.moves.length, position.moves.length + 1);
-  status = next.status;
-  position = { size: next.size, rule: next.rule, moves: next.moves };
 }
-assert.notEqual(status, "playing", "A full NNUE vs NNUE game must terminate");
 const baseline = request({
   method: "analyze",
   evaluator: "handcrafted",
@@ -153,7 +167,7 @@ const report = {
     policyLogits: policies,
     maxAbsoluteError: 0,
   },
-  selfPlay: { status, plies: position.moves.length, nodes, searchMilliseconds: milliseconds },
+  selfPlay,
   tacticalWin: true,
   invalidReplacementPreservesModel: true,
   incompatibleModelRejected: true,

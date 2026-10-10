@@ -22,6 +22,7 @@ import { Board, colorName, pointName } from "./Board.js";
 import { MatchController, initialSnapshot, isHuman } from "./game/controller.js";
 
 const modelAvailable = __GOMOKU_MODEL_MANIFEST__ !== null;
+const modelSizes = __GOMOKU_MODEL_SIZES__;
 
 function IconButton({
   icon: Icon,
@@ -146,7 +147,7 @@ function Settings({
   function update(patch: Partial<MatchConfig>) {
     setDraft((value) => {
       const next = { ...value, ...patch };
-      if (next.size !== 15) next.evaluator = "handcrafted";
+      if (!modelSizes.includes(next.size)) next.evaluator = "handcrafted";
       return next;
     });
   }
@@ -171,7 +172,7 @@ function Settings({
       </label>
     );
   }
-  const nnueSupported = draft.size === 15;
+  const nnueSupported = modelSizes.includes(draft.size);
   return (
     <form
       onSubmit={(event) => {
@@ -222,7 +223,9 @@ function Settings({
                 ? "NNUE 权重尚未配置"
                 : nnueSupported
                   ? undefined
-                  : "NNUE 仅支持 15×15 棋盘",
+                  : "NNUE 仅支持 " +
+                    modelSizes.map((size) => size + "×" + size).join("、") +
+                    " 棋盘",
             },
             { value: "handcrafted", label: "基础" },
           ]}
@@ -306,7 +309,8 @@ export function App() {
     setController(match);
     void match.start({
       ...initialSnapshot.config,
-      evaluator: modelAvailable ? "nnue" : "handcrafted",
+      evaluator:
+        modelAvailable && modelSizes.includes(initialSnapshot.config.size) ? "nnue" : "handcrafted",
     });
     return () => {
       disposed = true;

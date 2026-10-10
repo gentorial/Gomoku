@@ -53,6 +53,10 @@ class DataConfig:
     manifest: str = "data/training/manifest.json"
     augment: bool = True
     shuffle_block: int = 65536
+    # Further datasets (e.g. another board size) mixed into training. Each step
+    # draws one dataset; weights cover [manifest, *mix] and default to sizes.
+    mix: tuple = ()
+    mix_weights: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -155,6 +159,22 @@ class Config:
             self.run.output, str
         ):
             raise ValueError("manifest and output must be paths")
+        if not isinstance(self.data.mix, (list, tuple)) or not all(
+            isinstance(path, str) for path in self.data.mix
+        ):
+            raise ValueError("mix must be a list of manifest paths")
+        weights = self.data.mix_weights
+        if not isinstance(weights, (list, tuple)) or (
+            weights
+            and (
+                len(weights) != len(self.data.mix) + 1
+                or any(
+                    type(w) not in (int, float) or not math.isfinite(w) or w <= 0
+                    for w in weights
+                )
+            )
+        ):
+            raise ValueError("mix_weights must give one positive weight per dataset")
 
     def to_dict(self):
         return asdict(self)
@@ -191,4 +211,5 @@ def load_config(path):
     value = config.to_dict()
     for section, key in (("data", "manifest"), ("run", "output")):
         value[section][key] = str((path.parent / value[section][key]).resolve())
+    value["data"]["mix"] = [str((path.parent / item).resolve()) for item in value["data"]["mix"]]
     return from_dict(value)

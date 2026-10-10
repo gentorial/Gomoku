@@ -12,7 +12,7 @@ from .export import QuantizedReference
 from .io import file_sha256, read_json, write_json
 from .model import LineNNUE
 from .shards import ShardDataset, decode_batch
-from .train import load_checkpoint
+from .train import board_sizes, load_checkpoint
 
 
 def reference_check(checkpoint, export_manifest, dataset_manifest, positions=32):
@@ -27,9 +27,10 @@ def reference_check(checkpoint, export_manifest, dataset_manifest, positions=32)
         if reference.manifest["checkpointSha256"] != file_sha256(checkpoint):
             raise ValueError("Export was not produced from this checkpoint")
         dataset = ShardDataset(dataset_manifest, "test")
-        if not len(dataset) or (dataset.size, dataset.rule) != (
-            state["size"],
-            state["rule"],
+        if (
+            not len(dataset)
+            or dataset.size not in board_sizes(state)
+            or dataset.rule != state["rule"]
         ):
             raise ValueError("Need a nonempty test split matching the checkpoint")
         indices = np.linspace(
@@ -93,7 +94,7 @@ def assess(
         "trainingStep": state["step"],
         "trainingSource": state.get("source", {}),
         "initializedFrom": state.get("initializedFrom"),
-        "size": state["size"],
+        "sizes": board_sizes(state),
         "rule": state["rule"],
         "datasetCounts": data["counts"],
         "teachers": data.get("teachers", []),

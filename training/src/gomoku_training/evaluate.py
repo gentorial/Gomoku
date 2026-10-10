@@ -6,7 +6,7 @@ from .config import from_dict
 from .device import torch, resolve_device
 from .model import LineNNUE
 from .shards import ShardDataset
-from .train import load_checkpoint, validate_model
+from .train import board_sizes, load_checkpoint, validate_model
 
 
 def evaluate(checkpoint, manifest, split="test", device="auto", *, loss_config=None, precision=None):
@@ -21,7 +21,7 @@ def evaluate(checkpoint, manifest, split="test", device="auto", *, loss_config=N
     torch.set_num_threads(config.run.cpu_threads)
     dataset = ShardDataset(manifest, split)
     try:
-        if (dataset.size, dataset.rule) != (state["size"], state["rule"]):
+        if dataset.rule != state["rule"] or dataset.size not in board_sizes(state):
             raise ValueError("Evaluation dataset does not match model rule and size")
         if not len(dataset):
             raise ValueError("Evaluation split is empty")

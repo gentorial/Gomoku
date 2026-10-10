@@ -12,9 +12,10 @@ int main(int argc, char** argv) {
     try {
         if (argc != 3) throw std::invalid_argument("Usage: gomoku-nnue-check weights.gnn reference-vectors.json");
         auto model = NnueModel::load_file(argv[1]);
-        if (!model->supports(Position(model->size(), Rule::standard)) ||
-            model->supports(Position(model->size() == 15 ? 20 : 15, model->rule())))
-            throw std::runtime_error("Unexpected NNUE board/rule support");
+        for (int size : {15, 20})
+            if (model->supports(Position(size, Rule::standard)) != model->supports_size(size) ||
+                model->supports(Position(size, model->rule())) != model->supports_size(size))
+                throw std::runtime_error("Unexpected NNUE board/rule support");
         std::ifstream input(argv[2]);
         const auto reference = json::parse(input);
         if (reference.at("format") != "line-nnue-reference-v1") throw std::invalid_argument("Invalid reference format");
@@ -22,14 +23,17 @@ int main(int argc, char** argv) {
         int values = 0, policies = 0, increments = 0, vectors = 0;
         std::mt19937 random(72);
         for (const auto& vector : reference.at("vectors")) {
-            Position position(model->size(), model->rule());
+            // Board vectors imply their size; move lists name it (older single-size files omit it).
+            const int size = vector.contains("board") ? static_cast<int>(vector.at("board").size())
+                                                      : vector.value("size", model->sizes().front());
+            Position position(size, model->rule());
             if (vector.contains("board")) {
                 std::vector<Stone> stones;
                 for (int y = 0; y < position.size(); ++y) for (int x = 0; x < position.size(); ++x) {
                     const int color = vector.at("board").at(y).at(x).get<int>();
                     if (color) stones.push_back({{x, y}, static_cast<Color>(color)});
                 }
-                position = Position::from_stones(model->size(), model->rule(), stones,
+                position = Position::from_stones(size, model->rule(), stones,
                     static_cast<Color>(vector.at("toMove").get<int>()));
             } else {
                 for (const auto& move : vector.at("moves")) position.play({move.at("x"), move.at("y")});

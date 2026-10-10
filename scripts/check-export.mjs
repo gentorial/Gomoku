@@ -6,7 +6,9 @@ import createModule from "../packages/engine-wasm/generated/gomoku-engine.mjs";
 
 const [modelPath, referencePath] = process.argv.slice(2);
 const bytes = await readFile(modelPath);
-const size = bytes.readUInt32LE(40),
+// Format version 1 names one board; version 2 stores a 15/20 bit mask.
+const boards = bytes.readUInt32LE(40),
+  sizes = bytes.readUInt32LE(8) === 1 ? [boards] : [15, 20].filter((_, i) => boards & (1 << i)),
   rule = bytes.readUInt32LE(44) === 0 ? "freestyle" : "standard";
 const engine = await createModule({
   wasmBinary: await readFile(
@@ -26,6 +28,7 @@ try {
 }
 const references = JSON.parse(await readFile(referencePath, "utf8"));
 for (const vector of references.vectors) {
+  const size = vector.size ?? sizes[0];
   const board = vector.board ?? Array.from({ length: size }, () => Array(size).fill(0));
   if (!vector.board)
     vector.moves.forEach(({ x, y }, i) => {
@@ -38,7 +41,7 @@ for (const vector of references.vectors) {
       ["string"],
       [
         JSON.stringify({
-          size,
+          size: board.length,
           rule,
           board,
           toMove: vector.toMove ?? (vector.moves.length % 2) + 1,
@@ -51,7 +54,7 @@ for (const vector of references.vectors) {
 }
 // Header, descriptor, range, truncation and trailing bytes are distinct rejection paths.
 for (const [offset, value] of [
-  [8, 2],
+  [8, 3],
   [20, 0],
   [88, 4],
   [92, 0],
@@ -75,7 +78,7 @@ console.log(
   "WASM matches independent reference on " +
     references.vectors.length +
     " positions (" +
-    size +
+    sizes.join("/") +
     ", " +
     rule +
     ")",

@@ -132,6 +132,14 @@ prepare 使用磁盘 SQLite 去重和记录进度，默认从第 6 手取样，�
 
 编辑 [正式配置](configs/line11.toml)。所有路径相对配置文件所在目录解析。
 每个数据集固定一种规则与棋盘尺寸；相同结构支持 15/20 路，模型按实际训练组合发布。
+`[data]` 的 `mix` 可再列出其他数据集（如另一种棋盘），`mix_weights` 依次给出
+`manifest` 与各 `mix` 的抽样权重，缺省按训练集大小。每步只从一个数据集取整批，
+按步数可复现；验证分别计算各数据集，并以加权损失选最佳 checkpoint。
+混合训练的 checkpoint 记录 `sizes`，导出为同时声明这些尺寸的单个模型。
+初始化（非恢复）允许改变棋盘尺寸，规则必须一致。
+
+`gomoku-widen old.pt new.pt --value-hidden 256` 加宽 value 隐藏层：复制原有单元，
+新单元的输出权重为零，因此加宽后的全部输出与量化导出不变，可作为 `initialize` 起点。
 
 ```powershell
 uv run --frozen --package gomoku-training --extra xpu gomoku-train --config training/configs/line11.toml

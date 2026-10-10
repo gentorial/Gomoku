@@ -52,7 +52,8 @@ maxDepth 范围 1..12，默认 4；maxNodes 范围 0..10000000，0 表示不设�
 analyze 可传 `evaluator: "nnue"` 或 `"handcrafted"`。显式 NNUE 请求在模型缺失或
 规则/棋盘不匹配时失败。原生 Worker 可通过 `--model weights.gnn` 加载模型；
 未传 evaluator 时优先使用已加载且兼容的 NNUE，否则使用基础引擎。
-about 中可选的 nnue 字段提供已加载模型的规则、尺寸与字节数；无模型为 null。
+about 中可选的 nnue 字段提供已加载模型的规则、全部棋盘尺寸 `sizes` 与字节数；无模型为 null。
+自由规则权重同时服务同尺寸的标准规则局面。
 浏览器 analysis 另带可选 model 对象（id、label、sha256），记录经过完整校验的模型身份。
 score.perspective 固定为 side_to_move，value 是引擎分数，不是胜率。
 kind=mate 使用内部大分值编码距离；它来自当前选择性搜索树，不是完备求解证明。

@@ -18,6 +18,7 @@ gomoku-export = "gomoku_training.export:main"
 gomoku-device = "gomoku_training.device:main"
 gomoku-evaluate = "gomoku_training.evaluate:main"
 gomoku-assess = "gomoku_training.assess:main"
+gomoku-widen = "gomoku_training.widen:main"
 
 [tool.uv.sources]
 gomoku-tools = { workspace = true }

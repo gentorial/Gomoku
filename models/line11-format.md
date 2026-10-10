@@ -46,10 +46,13 @@ policy 排序不改变规则合法性。
 `<8s12I` 的 56 字节头开始：
 
 1. magic：8 字节 `GMLINE1` 加 NUL。
-2. 格式版本 1、特征版本 1。
+2. 格式版本（1 或 2）、特征版本 1。
 3. mapping_width、channels、value_hidden、policy_hidden。
 4. activation_scale=256、weight_scale=1024。
-5. 棋盘尺寸、规则（0=freestyle，1=standard）。
+5. 棋盘、规则（0=freestyle，1=standard）。版本 1 的棋盘字段是单一尺寸 15 或 20；
+   版本 2 是尺寸位掩码（bit 0=15，bit 1=20），目前只用于同时声明两种尺寸的 3。
+   单尺寸模型继续导出为版本 1，与旧文件逐字节相同。网络本身与尺寸无关，
+   运行时按局面尺寸建立几何与累加器，`size/20` 上下文取自当前局面。
 6. 张量数 14、单表棋形数 397488。
 
 随后按 `export.tensor_shapes()` 的固定顺序保存 14 个张量。每个张量先写
@@ -61,7 +64,7 @@ policy_local、policy_global、policy_out 各自的 weight 和 bias。
 value/policy 头部宽度由上面的上下文补零规则决定。
 加载器必须逐个校验名称、维度、尺寸、缩放和文件边界，并拒绝尾部多余字节。
 
-独立 manifest 提供 SHA-256、字节数、结构配置和结构摘要、规则、棋盘尺寸、
+独立 manifest 提供 SHA-256、字节数、结构配置和结构摘要、规则、棋盘尺寸列表 `sizes`、
 源检查点和数据清单摘要、训练步数与运行时兼容状态。新导出保持
 `runtimeCompatible=false`，直到该模型的 C++/WASM 推理完成验证。
 当前加载器额外限制单模型文件不超过 512 MiB；浏览器内存上限与常驻占用不同，
