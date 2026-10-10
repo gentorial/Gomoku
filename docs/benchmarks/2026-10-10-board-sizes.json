@@ -1,0 +1,314 @@
+{
+  "format": "gomoku-development-comparison-v1",
+  "date": "2026-10-10",
+  "baselineGitRevision": "c0f7c25acb2547ce34d206856cc3a860ee66c957",
+  "conditions": {
+    "native": "Windows 11, Intel Core Ultra X7 358H (16 cores), Arc B390 XPU for training; arena engines are native gomoku-worker builds, one search thread each",
+    "arenaConcurrency": "512-game arenas ran 7 opening pairs at once; the 15x15 and 20x20 merged arenas ran simultaneously, so both sides shared the same CPU contention",
+    "rules": "freestyle; 15x15 and 20x20",
+    "statistics": "Pairs of color-swapped games are the unit. Elo is logistic, from the mean pair score with a normal 95% interval over pairs."
+  },
+  "transferWithoutTraining": {
+    "method": "v3 weights with the .gnn header board field changed; 8 fixed openings (shifted by +2,+2 for 20x20), 300 ms, depth 8, versus the handcrafted engine",
+    "v3On15Freestyle": "16-0",
+    "v3On15Standard": "16-0",
+    "v3On20Freestyle": "13-3",
+    "scope": "16 games each; only shows the direction of transfer"
+  },
+  "rapfi20Campaign": {
+    "configs": [
+      "tools/configs/rapfi-20-general.toml",
+      "tools/configs/rapfi-20-multipv.toml",
+      "training/configs/rapfi-20-warmup.toml",
+      "training/configs/rapfi-20.toml"
+    ],
+    "initialization": "v3 best checkpoint with its board-size field set to 20",
+    "datasetCounts": {
+      "train": 878591,
+      "validation": 107621,
+      "test": 110394
+    },
+    "selectedCheckpoint": {
+      "step": 46000,
+      "sha256": "045a6c4541a371bf82007008e7f52fa3f8198e7e7f33931958396668cb0607c1"
+    },
+    "exportSha256": "6f14f13aa52b2ca612805a5654465b6cb9c16c38356aca2ac6734fa70eeccb88",
+    "test20x20": {
+      "v3": {
+        "loss": 0.7683,
+        "teacherScalarMse": 0.2794,
+        "policyTop1Agreement": 0.4937,
+        "policyTop5Agreement": 0.8101,
+        "teacherMateAccuracy": 0.8992,
+        "positions": 110394
+      },
+      "rapfi20": {
+        "loss": 0.5738,
+        "teacherScalarMse": 0.2193,
+        "policyTop1Agreement": 0.5359,
+        "policyTop5Agreement": 0.8541,
+        "teacherMateAccuracy": 0.9568,
+        "positions": 110394
+      }
+    },
+    "promotionArena": {
+      "games": 64,
+      "scoreA": 53,
+      "winsA": 53,
+      "draws": 0,
+      "winsB": 11,
+      "failures": 0,
+      "paired": {
+        "pairs": 32,
+        "winningPairs": 21,
+        "losingPairs": 0,
+        "tiedPairs": 11,
+        "oneSidedSignP": 4.76837158203125e-7
+      },
+      "opponent": "v3 weights on 20x20",
+      "timeMs": 3000,
+      "pairs": 32
+    }
+  },
+  "rapfi20On15": {
+    "test15x15": {
+      "v3": {
+        "loss": 0.5584,
+        "teacherScalarMse": 0.111,
+        "policyTop1Agreement": 0.5026,
+        "policyTop5Agreement": 0.8272,
+        "teacherMateAccuracy": 0.927,
+        "positions": 118427
+      },
+      "rapfi20": {
+        "loss": 0.8455,
+        "teacherScalarMse": 0.3326,
+        "policyTop1Agreement": 0.4115,
+        "policyTop5Agreement": 0.745,
+        "teacherMateAccuracy": 0.9353,
+        "positions": 118427
+      }
+    },
+    "arena64": {
+      "report": "artifacts/experiments/merged-15/arena-15-1s.json",
+      "reportSha256": "18a25846712409e670cc7550f0815cabf97201d134d503f04ce15eb69e2a5cc8",
+      "limits": {
+        "timeMs": 1000,
+        "maxDepth": 12
+      },
+      "size": 15,
+      "rule": "freestyle",
+      "engines": {
+        "a": "/artifacts/experiments/merged-15/rapfi-20-as15.gnn",
+        "b": "/apps/web/public/models/5ad5f4cf877282be9451b57f07366c8472fa59202ddd961c81f35630e84a7a71/weights.gnn"
+      },
+      "openingsSha256": "34062b068cb15859fd366e3b0d1c504e65104abd27517b41a464e86fc3632831",
+      "summary": {
+        "games": 64,
+        "scoreA": 32.5,
+        "winsA": 32,
+        "draws": 1,
+        "winsB": 31,
+        "failures": 0
+      },
+      "paired": {
+        "pairs": 32,
+        "winningPairs": 7,
+        "losingPairs": 7,
+        "tiedPairs": 18,
+        "oneSidedSignP": 0.604736328125
+      },
+      "scoreAByColor": {
+        "black": 15,
+        "white": 17.5
+      },
+      "pentanomial": [6, 1, 18, 0, 7],
+      "scoreA": 0.5078,
+      "eloA": 5,
+      "eloA95": [-73, 84],
+      "note": "32 pairs looked even (p=0.60) but was reversed by the 512-game arena"
+    },
+    "arena512": {
+      "report": "artifacts/experiments/merged-15/arena-15-1s-512.json",
+      "reportSha256": "02193016885ab5535343940467845fe044937516f177ddf0d23e02210791cc58",
+      "limits": {
+        "timeMs": 1000,
+        "maxDepth": 12
+      },
+      "size": 15,
+      "rule": "freestyle",
+      "engines": {
+        "a": "/artifacts/experiments/merged-15/rapfi-20-as15.gnn",
+        "b": "/apps/web/public/models/5ad5f4cf877282be9451b57f07366c8472fa59202ddd961c81f35630e84a7a71/weights.gnn"
+      },
+      "openingsSha256": "593287aa2009848b1159261288695f0447bbacb2cc8ee2a4fdcfaf078be7d91e",
+      "summary": {
+        "games": 512,
+        "scoreA": 191.0,
+        "winsA": 189,
+        "draws": 4,
+        "winsB": 319,
+        "failures": 0
+      },
+      "paired": {
+        "pairs": 256,
+        "winningPairs": 30,
+        "losingPairs": 95,
+        "tiedPairs": 131,
+        "oneSidedSignP": 0.9999999992853618
+      },
+      "scoreAByColor": {
+        "black": 97.5,
+        "white": 93.5
+      },
+      "pentanomial": [93, 2, 131, 2, 28],
+      "scoreA": 0.373,
+      "eloA": -90,
+      "eloA95": [-120, -62]
+    },
+    "conclusion": "Training only on 20x20 data forgot 15x15: about -90 Elo against v3 at 1 s."
+  },
+  "mergedModel": {
+    "configuration": "training/configs/merged-v1.toml",
+    "initialization": "rapfi-20 best checkpoint",
+    "data": "v3 15x15 dataset and rapfi-20 20x20 dataset, mix_weights [1, 1], one board size per step",
+    "steps": 50000,
+    "selectedStep": 47000,
+    "checkpointSha256": "b0fc687650081e94dce9aac42bc9be8baef52a97d12f648285e89f215cc9db21",
+    "export": {
+      "sha256": "ae3d1809ce7226d038d3b73b5d2d71737639dbed470a9da0015c2c85fffec634",
+      "bytes": 102109456,
+      "formatVersion": 2,
+      "sizes": [15, 20]
+    },
+    "test": {
+      "15x15": {
+        "v3": {
+          "loss": 0.5584,
+          "teacherScalarMse": 0.111,
+          "policyTop1Agreement": 0.5026,
+          "policyTop5Agreement": 0.8272,
+          "teacherMateAccuracy": 0.927,
+          "positions": 118427
+        },
+        "merged": {
+          "loss": 0.5388,
+          "teacherScalarMse": 0.1087,
+          "policyTop1Agreement": 0.5115,
+          "policyTop5Agreement": 0.8361,
+          "teacherMateAccuracy": 0.8983,
+          "positions": 118427
+        }
+      },
+      "20x20": {
+        "rapfi20": {
+          "loss": 0.5738,
+          "teacherScalarMse": 0.2193,
+          "policyTop1Agreement": 0.5359,
+          "policyTop5Agreement": 0.8541,
+          "teacherMateAccuracy": 0.9568,
+          "positions": 110394
+        },
+        "merged": {
+          "loss": 0.566,
+          "teacherScalarMse": 0.2125,
+          "policyTop1Agreement": 0.5379,
+          "policyTop5Agreement": 0.8566,
+          "teacherMateAccuracy": 0.9595,
+          "positions": 110394
+        }
+      }
+    },
+    "arena15VersusV3": {
+      "report": "artifacts/experiments/merged/arena-15-1s-512.json",
+      "reportSha256": "5eb9cae7111dfb86a89919ca11c873bf00284b94d45e6cfdd516540aa98a80a7",
+      "limits": {
+        "timeMs": 1000,
+        "maxDepth": 12
+      },
+      "size": 15,
+      "rule": "freestyle",
+      "engines": {
+        "a": "/artifacts/experiments/merged/export-best-2/weights.gnn",
+        "b": "/apps/web/public/models/5ad5f4cf877282be9451b57f07366c8472fa59202ddd961c81f35630e84a7a71/weights.gnn"
+      },
+      "openingsSha256": "593287aa2009848b1159261288695f0447bbacb2cc8ee2a4fdcfaf078be7d91e",
+      "summary": {
+        "games": 512,
+        "scoreA": 271.0,
+        "winsA": 264,
+        "draws": 14,
+        "winsB": 234,
+        "failures": 0
+      },
+      "paired": {
+        "pairs": 256,
+        "winningPairs": 62,
+        "losingPairs": 43,
+        "tiedPairs": 151,
+        "oneSidedSignP": 0.039242513669508886
+      },
+      "scoreAByColor": {
+        "black": 141.5,
+        "white": 129.5
+      },
+      "pentanomial": [40, 3, 151, 11, 51],
+      "scoreA": 0.5293,
+      "eloA": 20,
+      "eloA95": [-5, 46]
+    },
+    "arena20VersusRapfi20": {
+      "report": "artifacts/experiments/merged/arena-20-1s-512.json",
+      "reportSha256": "e5e8a7f6745c539ae7c5400c5ba51bc5e3221ace917496af45d947e98931e4b2",
+      "limits": {
+        "timeMs": 1000,
+        "maxDepth": 12
+      },
+      "size": 20,
+      "rule": "freestyle",
+      "engines": {
+        "a": "/artifacts/experiments/merged/export-best-2/weights.gnn",
+        "b": "/artifacts/campaigns/rapfi-20-v1/export-best/weights.gnn"
+      },
+      "openingsSha256": "138c6f21d935725d2b99c1571aa0da2e819155323b9ab69233e29af361a55587",
+      "summary": {
+        "games": 512,
+        "scoreA": 286,
+        "winsA": 286,
+        "draws": 0,
+        "winsB": 226,
+        "failures": 0
+      },
+      "paired": {
+        "pairs": 256,
+        "winningPairs": 66,
+        "losingPairs": 36,
+        "tiedPairs": 154,
+        "oneSidedSignP": 0.001932791794169162
+      },
+      "scoreAByColor": {
+        "black": 148,
+        "white": 138
+      },
+      "pentanomial": [36, 0, 154, 0, 66],
+      "scoreA": 0.5586,
+      "eloA": 41,
+      "eloA95": [14, 68]
+    },
+    "caveats": [
+      "The merged model started from rapfi-20 and trained 50k more steps, so its 20x20 gain mixes joint training with extra training.",
+      "Arenas used native 1 s per move; the website defaults to 0.3 s in WASM.",
+      "15x15 mate accuracy on the test split is lower than v3 (0.898 vs 0.927)."
+    ]
+  },
+  "floatVersusIntegerReference": {
+    "observation": "The fake-quantized PyTorch policy occasionally differs from the int64 reference when an activation lands on a rounding boundary: up to 0.011 over 64 test positions for the merged model; published v3 shows 0.008 at 64 positions. Values matched exactly.",
+    "runtimeParity": "Python int64 reference, native and WASM agree exactly on all 16 fixture positions (8 per board size)."
+  },
+  "promotion": {
+    "promoted": true,
+    "webModel": "rapfi-v4-ae3d1809ce72",
+    "replaces": "rapfi-v3-5ad5f4cf8772",
+    "reason": "Not worse than v3 on 15x15 (+20 Elo, 95% -5..+46) and stronger than the 20x20 specialist (+41 Elo, 95% +14..+68), from one 97 MiB file."
+  }
+}

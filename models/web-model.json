@@ -1,10 +1,10 @@
 {
-  "id": "rapfi-v3-5ad5f4cf8772",
-  "label": "NNUE v3",
+  "id": "rapfi-v4-ae3d1809ce72",
+  "label": "NNUE v4",
   "architecture": "line11-dual-v1",
-  "size": 15,
+  "sizes": [15, 20],
   "rule": "freestyle",
   "bytes": 102109456,
-  "sha256": "5ad5f4cf877282be9451b57f07366c8472fa59202ddd961c81f35630e84a7a71",
-  "url": "https://github.com/gentorial/Gomoku/releases/download/nnue-rapfi-v3-5ad5f4cf8772/weights.gnn"
+  "sha256": "ae3d1809ce7226d038d3b73b5d2d71737639dbed470a9da0015c2c85fffec634",
+  "url": "https://github.com/gentorial/Gomoku/releases/download/nnue-rapfi-v4-ae3d1809ce72/weights.gnn"
 }
