@@ -5,6 +5,7 @@
 #include <bit>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace gomoku {
@@ -353,6 +354,37 @@ struct Search {
 };
 }
 
+void set_search_option(SearchOptions& options, std::string_view assignment) {
+    const auto split = assignment.find('=');
+    if (split == std::string_view::npos || split == 0)
+        throw std::invalid_argument("Search option must be name=value");
+    const auto name = assignment.substr(0, split);
+    const std::string text(assignment.substr(split + 1));
+    std::size_t used = 0;
+    double value = 0;
+    try { value = std::stod(text, &used); } catch (const std::exception&) { used = 0; }
+    if (text.empty() || used != text.size() || !std::isfinite(value))
+        throw std::invalid_argument("Invalid value for search option " + std::string(name));
+    const auto whole = [&](long long low, long long high) {
+        if (value != std::floor(value) || value < low || value > high)
+            throw std::invalid_argument("Search option " + std::string(name) + " is out of range");
+        return static_cast<long long>(value);
+    };
+    if (name == "transpositions") options.transpositions = whole(0, 1);
+    else if (name == "pvs") options.pvs = whole(0, 1);
+    else if (name == "table_entries") options.table_entries = static_cast<std::size_t>(whole(1, 1 << 18));
+    else if (name == "vcf") options.vcf = whole(0, 1);
+    else if (name == "vcf_node_limit") options.vcf_node_limit = static_cast<std::uint64_t>(whole(0, 10000000));
+    else if (name == "vcf_max_plies") options.vcf_max_plies = static_cast<int>(whole(1, 400));
+    else if (name == "threat_filter") options.threat_filter = whole(0, 1);
+    else if (name == "lmr") options.lmr = whole(0, 1);
+    else if (name == "lmr_min_depth") options.lmr_min_depth = static_cast<int>(whole(1, 64));
+    else if (name == "lmr_min_moves") options.lmr_min_moves = static_cast<int>(whole(1, 400));
+    else if (name == "lmr_base" && value >= 0 && value <= 8) options.lmr_base = value;
+    else if (name == "lmr_divisor" && value > 0 && value <= 16) options.lmr_divisor = value;
+    else throw std::invalid_argument("Unknown or out-of-range search option " + std::string(assignment));
+}
+
 SearchResult search(const Position& root, Evaluator& evaluator, const SearchLimits& limits,
                     const std::atomic_bool& cancelled, const SearchObserver& observer,
                     const SearchOptions& options) {
@@ -363,6 +395,9 @@ SearchResult search(const Position& root, Evaluator& evaluator, const SearchLimi
         throw std::invalid_argument("TT entries must be a power of two up to 262144");
     if (options.vcf_max_plies < 1 || options.vcf_max_plies > 400)
         throw std::invalid_argument("Invalid VCF depth");
+    if (options.lmr_min_depth < 1 || options.lmr_min_moves < 1 || !(options.lmr_base >= 0) ||
+        !(options.lmr_divisor > 0))
+        throw std::invalid_argument("Invalid LMR parameters");
     Search searcher(evaluator, limits, cancelled, options, root);
     SearchResult result;
     evaluator.reset(root);

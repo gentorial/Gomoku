@@ -87,8 +87,11 @@ class EngineProcess:
 
 
 class Worker(EngineProcess):
-    def __init__(self, executable=None, model=None):
-        super().__init__(executable or binary(), ("--model", model) if model is not None else ())
+    def __init__(self, executable=None, model=None, search=()):
+        # Each search entry is "name=value", passed to the worker's --search flag.
+        arguments = [*(("--model", model) if model is not None else ()),
+                     *(item for option in search for item in ("--search", option))]
+        super().__init__(executable or binary(), arguments)
         self._lock = threading.Lock()
 
     def request(self, method, **params):

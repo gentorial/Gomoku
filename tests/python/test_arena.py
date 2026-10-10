@@ -71,6 +71,18 @@ class ArenaTests(unittest.TestCase):
                                stop_when=lambda played: True)
         self.assertEqual(resumed, games)
 
+    def test_search_overrides_reach_each_engine(self):
+        fixture = json.loads((ROOT / "tests/fixtures/winning-move.json").read_text())
+        opening = [{"id": "open", "moves": fixture["position"]["moves"][:4]}]
+        # The same binary with different overrides plays complete games.
+        games = worker_match(binary(), binary(), opening, time_ms=10000, depth=12, max_nodes=3000,
+                             search_a=["lmr=0", "threat_filter=0"], search_b=["lmr_divisor=1.5"])
+        self.assertTrue(all(g["failure"] is None for g in games))
+        # A rejected option stops the worker before it accepts any request.
+        with self.assertRaises((RuntimeError, TimeoutError, OSError, ValueError)):
+            with Worker(binary(), search=["lmr_divisor=0"]) as worker:
+                worker.request("about")
+
     def test_invalid_opening_is_not_scored_as_an_engine_loss(self):
         with self.assertRaises(ValueError):
             worker_match(binary(), binary(), [{"id": "bad", "moves": [{"x": 7, "y": 7}] * 2}])

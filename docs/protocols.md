@@ -50,7 +50,9 @@ maxDepth 范围 1..12，默认 4；maxNodes 范围 0..10000000，0 表示不设�
 
 分析结果包含 bestMove、pv、score、depth、nodes、elapsedMs、reason、evaluator。
 analyze 可传 `evaluator: "nnue"` 或 `"handcrafted"`。显式 NNUE 请求在模型缺失或
-规则/棋盘不匹配时失败。原生 Worker 可通过 `--model weights.gnn` 加载模型；
+规则/棋盘不匹配时失败。原生 Worker 可通过 `--model weights.gnn` 加载模型，并可重复
+`--search name=value` 覆盖搜索参数（`SearchOptions` 字段名，布尔值写 0/1，如
+`--search lmr_divisor=1.5`）；未知名称或越界数值会使 Worker 启动失败。
 未传 evaluator 时优先使用已加载且兼容的 NNUE，否则使用基础引擎。
 about 中可选的 nnue 字段提供已加载模型的规则、全部棋盘尺寸 `sizes` 与字节数；无模型为 null。
 自由规则权重同时服务同尺寸的标准规则局面。
