@@ -30,9 +30,10 @@ struct SearchOptions {
     // Late quiet moves (in policy order) first get a reduced null-window search.
     bool lmr = true;
     int lmr_min_depth = 3;
-    int lmr_min_moves = 3;
-    double lmr_base = 0.5;
-    double lmr_divisor = 2.0;
+    // Tuned 2026-10-10 by SPRT arenas against the earlier 3 / 0.5 / 2.0 (docs/tactical-search.md).
+    int lmr_min_moves = 2;
+    double lmr_base = 0.25;
+    double lmr_divisor = 1.0;
 };
 // Applies one "name=value" override (as passed to the worker's --search flag).
 // Names are the SearchOptions fields; booleans are 0/1. Throws on unknown names
