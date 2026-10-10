@@ -2,12 +2,6 @@ import websocket from "@fastify/websocket";
 import type { FastifyInstance } from "fastify";
 import type { OnlineService } from "./online.js";
 
-export const defaultOrigins = [
-  "https://gentorial.github.io",
-  "http://127.0.0.1:5173",
-  "http://localhost:5173",
-];
-
 /**
  * Serves online play at /ws. Browser connections must come from an allowed origin
  * (clients without an Origin header, such as tests, are accepted). Each socket may

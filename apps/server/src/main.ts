@@ -1,8 +1,22 @@
+import { readFile } from "node:fs/promises";
 import { createApp } from "./app.js";
 import { OnlineService } from "./online.js";
 import { createReferee } from "./referee.js";
 import { WorkerPool, defaultWorkerPath } from "./worker-pool.js";
 
+// Online settings live in config/online.json (a bundle carries a copy named by
+// GOMOKU_CONFIG); GOMOKU_ORIGINS overrides the allowed browser origins.
+const config = JSON.parse(
+  await readFile(
+    process.env.GOMOKU_CONFIG || new URL("../../../config/online.json", import.meta.url),
+    "utf8",
+  ),
+) as { origins: string[] };
+const origins = process.env.GOMOKU_ORIGINS
+  ? process.env.GOMOKU_ORIGINS.split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  : config.origins;
 // GOMOKU_AI=0 serves online play alone (no native engine); GOMOKU_ONLINE=0 disables it.
 const app = createApp(
   process.env.GOMOKU_AI === "0"
@@ -15,9 +29,7 @@ const app = createApp(
   {
     online:
       process.env.GOMOKU_ONLINE === "0" ? undefined : new OnlineService(await createReferee()),
-    origins: process.env.GOMOKU_ORIGINS?.split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    origins,
   },
 );
 const port = Number(process.env.PORT || 3001);

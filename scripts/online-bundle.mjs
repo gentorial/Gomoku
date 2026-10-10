@@ -1,4 +1,5 @@
-// Bundles the online play server into one ESM file plus the WASM rules engine,
+// Bundles the online play server into one ESM file plus the WASM rules engine and
+// config/online.json (run it with GOMOKU_WASM and GOMOKU_CONFIG naming those copies),
 // so a host needs only Node.js (no pnpm install, compilers or native engine).
 import { copyFile, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -25,4 +26,5 @@ await copyFile(
   resolve(root, "packages/engine-wasm/generated/gomoku-engine.wasm"),
   resolve(out, "gomoku-engine.wasm"),
 );
+await copyFile(resolve(root, "config/online.json"), resolve(out, "online.json"));
 console.log("Online server bundle: " + out);

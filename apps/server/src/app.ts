@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import { CreateGameSchema, PlaySchema, VersionSchema } from "@gomoku/contracts";
 import { ApiProblem, GameService } from "./games.js";
 import type { OnlineService } from "./online.js";
-import { defaultOrigins, registerOnline } from "./online-route.js";
+import { registerOnline } from "./online-route.js";
 import { EngineError, WorkerPool, type Engine } from "./worker-pool.js";
 
 export type AppOptions = { online?: OnlineService; origins?: readonly string[] };
@@ -14,7 +14,7 @@ export function createApp(
   options: AppOptions = {},
 ) {
   const app = Fastify({ logger, bodyLimit: 65536, forceCloseConnections: true });
-  if (options.online) registerOnline(app, options.online, options.origins ?? defaultOrigins);
+  if (options.online) registerOnline(app, options.online, options.origins ?? []);
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ApiProblem)
       return reply.code(error.status).send({ error: { code: error.code, message: error.message } });
