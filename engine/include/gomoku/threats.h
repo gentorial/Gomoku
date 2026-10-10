@@ -4,7 +4,9 @@
 
 namespace gomoku {
 // Incremental, exact five/four features. No network, move ordering or I/O.
-// A four move leaves at least one immediate winning point after it is played.
+// A four move leaves at least one immediate winning point after it is played;
+// an open-four move leaves two or more (an open four or a double four), which
+// the opponent cannot block in one move. A side with such a point has an open three.
 class Threats {
 public:
     explicit Threats(const Position& position);
@@ -12,10 +14,13 @@ public:
     void undo(Move move);
     int winning_count(Color color) const { return wins_[side(color)]; }
     int four_count(Color color) const { return fours_[side(color)]; }
+    int open_four_count(Color color) const { return open_fours_[side(color)]; }
     bool wins(Move move, Color color) const;
     bool four(Move move, Color color) const;
+    bool open_four(Move move, Color color) const;
     std::vector<Move> winning_moves(Color color) const;
     std::vector<Move> four_moves(Color color) const;
+    std::vector<Move> open_four_moves(Color color) const;
 
 private:
     int size_;
@@ -24,7 +29,7 @@ private:
     std::array<std::array<unsigned, 2>, 1600> codes_{};
     std::array<unsigned char, 1600> lines_{};
     std::array<unsigned char, 400> features_{};
-    std::array<int, 2> wins_{}, fours_{};
+    std::array<int, 2> wins_{}, fours_{}, open_fours_{};
     static int side(Color color) { return color == Color::black ? 0 : 1; }
     int index(Move move) const { return move.y * size_ + move.x; }
     bool contains(Move move) const;

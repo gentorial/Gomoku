@@ -149,6 +149,39 @@ int main() {
             verify_proof(record,solve_vcf(record,features));
             record.undo();
         }
+        // Open threes: each end of a free three gives two winning points (an open four).
+        const std::vector<Stone> corners{{{0,0},Color::white},{{14,0},Color::white},{{0,14},Color::white},{{14,14},Color::white}};
+        auto stones = corners;
+        for (Move m : {Move{6,7},Move{7,7},Move{8,7}}) stones.push_back({m,Color::black});
+        stones.push_back({{0,7},Color::white});
+        const auto three = Position::from_stones(15, Rule::freestyle, stones, Color::white);
+        Threats open(three);
+        require(open.open_four({5,7},Color::black) && open.open_four({9,7},Color::black) &&
+                !open.open_four({4,7},Color::black) && open.open_four_count(Color::white) == 0,
+                "open-four points must mark exactly the ends of a free three");
+        // Facing it, the search must answer with a move that leaves no open-four point.
+        Flat flat; std::atomic_bool stop{false};
+        const auto defence = search(three, flat, {5000,2,0}, stop);
+        auto defended = three;
+        defended.play(*defence.best_move);
+        require(Threats(defended).open_four_count(Color::black) == 0, "an open three must be answered");
+        // A double three at H8 leaves White no single reply: the filter reads the five-ply
+        // win at depth two and returns its full line instead of a bare mate score.
+        stones = corners;
+        for (Move m : {Move{6,7},Move{8,7},Move{7,6},Move{7,8}}) stones.push_back({m,Color::black});
+        const auto cross = Position::from_stones(15, Rule::freestyle, stones, Color::black);
+        const auto proved = search(cross, flat, {5000,2,0}, stop);
+        require(proved.best_move == Move{7,7} && proved.score == 99995 && proved.stats.threat_losses,
+                "a double three must be read as a forced win");
+        auto line = cross;
+        for (Move move : proved.pv) line.play(move);
+        require(line.winner() == Color::black, "the forced-loss PV must end in five");
+        // Answering a single open three only needs its few replies, not the usual 16 candidates.
+        SearchOptions unfiltered;
+        unfiltered.threat_filter = false;
+        const auto narrow = search(three, flat, {5000,3,0}, stop);
+        const auto wide = search(three, flat, {5000,3,0}, stop, {}, unfiltered);
+        require(narrow.nodes * 2 < wide.nodes, "the filter must shrink the tree under an open three");
         std::cout << "Threat make/unmake, exact-five rules, VCF proofs, counters and budget unwind passed\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

@@ -89,19 +89,74 @@ struct Search {
         entry = {key, to_table(score, ply), static_cast<std::int16_t>(move ? move->y*20+move->x : -1),
             static_cast<std::uint8_t>(depth), bound};
     }
-    std::vector<Move> ordered(const Position& position) {
-        if (threats) {
-            if (threats->winning_count(position.turn())) return threats->winning_moves(position.turn());
-            if (threats->winning_count(opposite(position.turn())))
-                return threats->winning_moves(opposite(position.turn()));
+    bool threatened(const Position& position) const {
+        return options.threat_filter && threats && threats->open_four_count(opposite(position.turn()));
+    }
+    // Replies to an opponent's open three: own fours, and moves after which the
+    // opponent has no point left that gives it two winning points. Any other move
+    // lets it make an unstoppable four. Only cells on a line within five of such a
+    // point can break it, so only those are tried on the threat board.
+    std::vector<Move> threat_replies(const Position& position) {
+        const auto side = position.turn(), other = opposite(side);
+        std::array<bool, 400> near{};
+        for (const auto point : threats->open_four_moves(other))
+            for (const Move d : {Move{1,0}, Move{0,1}, Move{1,1}, Move{1,-1}})
+                for (int k = -5; k <= 5; ++k) {
+                    const Move q{point.x + k*d.x, point.y + k*d.y};
+                    if (position.contains(q)) near[q.y*position.size()+q.x] = true;
+                }
+        std::vector<Move> replies;
+        for (const auto move : position.candidates()) {
+            check();
+            bool keep = threats->four(move, side);
+            if (!keep && near[move.y*position.size()+move.x]) {
+                threats->play(move, side);
+                keep = !threats->open_four_count(other) && !threats->winning_count(other);
+                threats->undo(move);
+            }
+            if (keep) replies.push_back(move);
         }
+        return replies;
+    }
+    // With no reply to an open three, every move loses: the opponent makes a four
+    // with two winning points, one is blocked, the other completes five. Returns
+    // that line, or nothing if the board does not follow it (then search normally).
+    std::optional<std::vector<Move>> forced_loss(Position& position) {
+        const auto side = position.turn(), other = opposite(side);
+        const auto attacks = threats->open_four_moves(other);
+        if (attacks.empty() || threats->four_count(side) || threats->winning_count(side)) return std::nullopt;
+        const Move first = position.legal(attacks.front()) ? attacks.front() : position.candidates().front();
+        Played a(position, first, &*threats);
+        const auto fours = threats->open_four_moves(other);
+        if (fours.empty() || threats->winning_count(side)) return std::nullopt;
+        Played b(position, fours.front(), &*threats);
+        auto wins = threats->winning_moves(other);
+        if (wins.size() < 2 || threats->winning_count(side)) return std::nullopt;
+        Played c(position, wins.front(), &*threats);
+        wins = threats->winning_moves(other);
+        if (wins.empty() || !position.wins(wins.front(), other)) return std::nullopt;
+        return std::vector<Move>{first, fours.front(), c.move, wins.front()};
+    }
+    // Moves are returned best first; `tactical` marks moves LMR must not reduce.
+    std::vector<Move> ordered(const Position& position, std::vector<char>& tactical,
+                              const std::vector<Move>* restricted = nullptr) {
+        if (threats) {
+            auto forced = threats->winning_count(position.turn()) ? threats->winning_moves(position.turn()) :
+                threats->winning_count(opposite(position.turn())) ? threats->winning_moves(opposite(position.turn())) :
+                std::vector<Move>{};
+            if (!forced.empty()) { tactical.assign(forced.size(), 1); return forced; }
+        }
+        std::vector<Move> replies;
+        if (!restricted && threatened(position)) replies = threat_replies(position);
+        if (!restricted && !replies.empty()) restricted = &replies;
         struct Ranked { Move move; int priority; double policy; int heuristic; std::size_t ordinal; };
         std::vector<Ranked> ranked;
-        const auto candidates = position.candidates();
+        // With no reply at all (only at the root), every move loses; rank them all.
+        const auto candidates = restricted ? *restricted : position.candidates();
         ranked.reserve(candidates.size());
         check();
         const auto policy = evaluator.move_scores(position, candidates);
-        std::size_t tactical = 0;
+        std::size_t tactical_count = 0;
         {
             GOMOKU_SCOPE(ranking);
             for (std::size_t i = 0; i < candidates.size(); ++i) {
@@ -110,7 +165,7 @@ struct Search {
                 int score = 0;
                 const int priority = position.wins(move, position.turn()) ? 3 :
                     position.wins(move, opposite(position.turn())) ? 2 : 0;
-                tactical += priority != 0;
+                tactical_count += priority != 0;
                 for (int dy = -2; dy <= 2; ++dy) {
                     for (int dx = -2; dx <= 2; ++dx) {
                         Move p{move.x + dx, move.y + dy};
@@ -122,7 +177,7 @@ struct Search {
                 ranked.push_back({move, priority, policy.empty() ? 0 : policy.at(i), score, i});
             }
         }
-        const auto count = std::min(ranked.size(), std::max(std::size_t(16), tactical));
+        const auto count = restricted ? ranked.size() : std::min(ranked.size(), std::max(std::size_t(16), tactical_count));
         {
             GOMOKU_SCOPE(sorting);
             std::partial_sort(ranked.begin(), ranked.begin()+count, ranked.end(), [](const auto& a, const auto& b) {
@@ -137,7 +192,14 @@ struct Search {
         // from this set, otherwise a TT bound could describe a different tree.
         std::vector<Move> moves;
         moves.reserve(count);
-        for (std::size_t i = 0; i < count; ++i) moves.push_back(ranked[i].move);
+        tactical.clear();
+        const auto side = position.turn(), other = opposite(side);
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto move = ranked[i].move;
+            moves.push_back(move);
+            tactical.push_back(restricted || ranked[i].priority ||
+                (threats && (threats->four(move, side) || threats->four(move, other))));
+        }
         return moves;
     }
     struct Picker {
@@ -147,19 +209,28 @@ struct Search {
         bool tried_preferred = false, generated = false;
         std::size_t index = 0;
         std::vector<Move> moves;
-        Picker(Search& s, const Position& p, std::optional<Move> first) : search(s), position(p), preferred(first) {}
+        std::vector<char> tactical;
+        const std::vector<Move>* restricted = nullptr;
+        bool last_tactical = true;
+        Picker(Search& s, const Position& p, std::optional<Move> first, const std::vector<Move>* only = nullptr)
+            : search(s), position(p), preferred(first), restricted(only) {}
         std::optional<Move> next() {
             // This is a previously searched move at the identical position,
             // so it belongs to the selected set even before policy is computed.
             if (!tried_preferred) { tried_preferred = true; if (preferred) return preferred; }
-            if (!generated) { moves = search.ordered(position); generated = true; }
+            if (!generated) { moves = search.ordered(position, tactical, restricted); generated = true; }
             while (index < moves.size()) {
-                const auto move = moves[index++];
+                const auto move = moves[index];
+                last_tactical = tactical[index++];
                 if (move != preferred) return move;
             }
             return {};
         }
     };
+    int reduction(int depth, int searched, bool pv) const {
+        const double r = options.lmr_base + std::log(depth) * std::log(searched) / options.lmr_divisor;
+        return std::max(0, static_cast<int>(r) - (pv ? 1 : 0));
+    }
     int negamax(Position& position, int depth, int alpha, int beta, int ply,
                 Move last_move, std::vector<Move>& pv) {
         check();
@@ -210,6 +281,20 @@ struct Search {
                 return value;
             }
         }
+        // An open three against us leaves few replies; with none, the opponent
+        // makes an unstoppable four next move and five two moves later.
+        std::vector<Move> replies;
+        if (depth > 0 && !forced && threatened(position)) {
+            ++stats.threatened_nodes;
+            replies = threat_replies(position);
+            if (replies.empty()) {
+                if (auto line = forced_loss(position)) {
+                    ++stats.threat_losses;
+                    pv = std::move(*line);
+                    return -mate + ply + 4;
+                }
+            }
+        }
         // Parent accumulators remain active until this point. Terminal states
         // and TT cutoffs do not pay for a convolution update or its undo frame.
         Accumulated accumulated(evaluator, position, last_move);
@@ -222,8 +307,9 @@ struct Search {
         const int original_alpha = alpha;
         int best = -infinity;
         std::optional<Move> best_move;
-        Picker picker(*this, position, preferred);
+        Picker picker(*this, position, preferred, replies.empty() ? nullptr : &replies);
         int searched = 0;
+        const bool pv_node = beta - alpha > 1;
         while (const auto move = picker.next()) {
             std::vector<Move> child;
             int value;
@@ -231,7 +317,17 @@ struct Search {
                 Played played(position, *move, tactics());
                 const int child_depth = std::max(depth-1, 0);
                 if (options.pvs && searched > 0) {
-                    value = -negamax(position, child_depth, -alpha-1, -alpha, ply+1, *move, child);
+                    // Policy-ordered late quiet moves are first refuted at reduced depth.
+                    const int r = options.lmr && depth >= options.lmr_min_depth && searched >= options.lmr_min_moves &&
+                        !forced && replies.empty() && !picker.last_tactical ? reduction(depth, searched, pv_node) : 0;
+                    if (r > 0) {
+                        ++stats.lmr_reductions;
+                        value = -negamax(position, std::max(child_depth - r, 0), -alpha-1, -alpha, ply+1, *move, child);
+                        if (value > alpha) {
+                            ++stats.lmr_researches;
+                            value = -negamax(position, child_depth, -alpha-1, -alpha, ply+1, *move, child);
+                        }
+                    } else value = -negamax(position, child_depth, -alpha-1, -alpha, ply+1, *move, child);
                     if (value > alpha && value < beta) {
                         ++stats.pvs_researches;
                         value = -negamax(position, child_depth, -beta, -alpha, ply+1, *move, child);

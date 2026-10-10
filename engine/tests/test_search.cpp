@@ -65,8 +65,10 @@ int main() {
             const auto reference = search(position, evaluator, limits, cancel, {}, {false, false});
             require(reference.reason == "completed", "reference must finish");
             validate_pv(position, evaluator, reference);
-            for (const SearchOptions options : {SearchOptions{true, true}, {true, false},
-                                                {false, true}, {true, true, 1}}) {
+            for (SearchOptions options : {SearchOptions{true, true}, {true, false},
+                                          {false, true}, {true, true, 1}}) {
+                // LMR deliberately changes the tree; minimax equivalence is checked without it.
+                options.lmr = false;
                 const auto result = search(position, evaluator, limits, cancel, {}, options);
                 require(result.reason == "completed", "optimized search must finish");
                 require(result.score == reference.score && result.depth == reference.depth,
@@ -84,6 +86,27 @@ int main() {
             require(changed.score == changed_reference.score, "TT must be scoped to one evaluator/search");
         }
         require(hits && cutoffs && researches && preferred, "exercise TT, PVS, and deferred policy cutoffs");
+
+        // LMR reduces late quiet moves yet keeps complete, exact PVs and saves nodes.
+        std::uint64_t reduced_nodes = 0, full_nodes = 0, reductions = 0;
+        for (int sample = 0; sample < 6; ++sample) {
+            Position position(15, Rule::freestyle);
+            for (int n = 0; n < 6 + sample && !position.terminal(); ++n) {
+                const auto moves = position.candidates();
+                position.play(moves[random()%moves.size()]);
+            }
+            if (position.terminal()) continue;
+            CheckedEvaluator evaluator;
+            SearchOptions plain;
+            plain.lmr = false;
+            const auto reduced = search(position, evaluator, {60000, 5, 0}, cancel);
+            const auto full = search(position, evaluator, {60000, 5, 0}, cancel, {}, plain);
+            require(reduced.reason == "completed" && full.reason == "completed", "LMR searches must finish");
+            validate_pv(position, evaluator, reduced);
+            reduced_nodes += reduced.nodes; full_nodes += full.nodes;
+            reductions += reduced.stats.lmr_reductions;
+        }
+        require(reductions && reduced_nodes < full_nodes, "LMR must reduce moves and save nodes at equal depth");
 
         Position opening;
         opening.play({7, 7});

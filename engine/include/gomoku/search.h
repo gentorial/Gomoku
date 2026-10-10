@@ -21,12 +21,23 @@ struct SearchOptions {
     bool vcf = true;
     std::uint64_t vcf_node_limit = 1024;
     int vcf_max_plies = 32;
+    // Against an opponent's open three, search only own fours and moves that
+    // remove every point where the opponent would get two winning points.
+    bool threat_filter = true;
+    // Late quiet moves (in policy order) first get a reduced null-window search.
+    bool lmr = true;
+    int lmr_min_depth = 3;
+    int lmr_min_moves = 3;
+    double lmr_base = 0.5;
+    double lmr_divisor = 2.0;
 };
 struct SearchStats {
     std::uint64_t tt_probes = 0, tt_hits = 0, tt_cutoffs = 0;
     std::uint64_t evaluator_pushes = 0, pvs_researches = 0;
     std::uint64_t preferred_cutoffs = 0;
     std::uint64_t vcf_nodes = 0, vcf_wins = 0, vcf_unknown = 0;
+    std::uint64_t threatened_nodes = 0, threat_losses = 0;
+    std::uint64_t lmr_reductions = 0, lmr_researches = 0;
 };
 struct SearchResult {
     std::optional<Move> best_move;

@@ -77,6 +77,7 @@ void Threats::refresh(int point, int direction) {
         const unsigned old = (features_[point] >> (s*4)) & 7;
         wins_[s] += int(bool(feature & 1)) - int(bool(old & 1));
         fours_[s] += int(bool(feature & 2)) - int(bool(old & 2));
+        open_fours_[s] += int(bool(feature & 4)) - int(bool(old & 4));
         combined |= feature << (s*4);
     }
     features_[point] = static_cast<unsigned char>(combined);
@@ -101,6 +102,7 @@ void Threats::play(Move move, Color color) { change(move, color, 1); }
 void Threats::undo(Move move) { change(move, board_[index(move)], -1); }
 bool Threats::wins(Move move, Color color) const { return contains(move) && (features_[index(move)] & (1 << (side(color)*4))); }
 bool Threats::four(Move move, Color color) const { return contains(move) && (features_[index(move)] & (2 << (side(color)*4))); }
+bool Threats::open_four(Move move, Color color) const { return contains(move) && (features_[index(move)] & (4 << (side(color)*4))); }
 std::vector<Move> Threats::moves(Color color, unsigned mask) const {
     std::vector<Move> result;
     mask <<= side(color)*4;
@@ -109,4 +111,5 @@ std::vector<Move> Threats::moves(Color color, unsigned mask) const {
 }
 std::vector<Move> Threats::winning_moves(Color color) const { return moves(color, 1); }
 std::vector<Move> Threats::four_moves(Color color) const { return moves(color, 2); }
+std::vector<Move> Threats::open_four_moves(Color color) const { return moves(color, 4); }
 }  // namespace gomoku

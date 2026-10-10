@@ -1,3 +1,7 @@
+if(EMSCRIPTEN)
+  # Match the browser module's stack (adapters/wasm), not Emscripten's 64 KiB default.
+  add_link_options(-sSTACK_SIZE=1048576)
+endif()
 add_executable(gomoku-engine-tests test_engine.cpp)
 target_link_libraries(gomoku-engine-tests PRIVATE gomoku_engine)
 if(EMSCRIPTEN)
